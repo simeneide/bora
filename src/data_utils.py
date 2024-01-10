@@ -1,7 +1,13 @@
 #%%
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict
+import datasets
 import transformers
 from torch.utils.data import DataLoader
+from dataclasses import dataclass
+from random import randint
+from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
+from transformers.utils import PaddingStrategy
+from transformers import PreTrainedTokenizerBase
 
 def tokenize_features(sample, tokenizer, features=None, max_token_len=None):
     if features is None:
@@ -11,7 +17,7 @@ def tokenize_features(sample, tokenizer, features=None, max_token_len=None):
     for key, val in sample.items():
         batch[key] = f" [{key}] {val}"
         if key in features:
-            batch[f"input_ids.{key}"] = tokenizer(
+            batch[f"{key}.input_ids"] = tokenizer(
                 batch[key],
                 return_attention_mask=False,
                 add_special_tokens=False,
@@ -20,8 +26,6 @@ def tokenize_features(sample, tokenizer, features=None, max_token_len=None):
             )['input_ids']
     return batch
 
-#dataset_nbnn = dataset_nbnn.map(lambda sample: tokenize_features(sample, tokenizer), num_proc=6)
-
 def concat_features(sample, out_config, tokenizer, max_token_len):
     batch = {}
     #batch = {key:val for key, val in sample.items() if "input_ids" not in key}
@@ -29,27 +33,31 @@ def concat_features(sample, out_config, tokenizer, max_token_len):
     for config in out_config:
         features = config['input_features'] + config['trainable_features']
 
-        tot_tokens = sum([len(sample[f"input_ids.{f}"]) for f in features])
+        tot_tokens = sum([len(sample[f"{f}.input_ids"]) for f in features])
         excessive_tokens = tot_tokens - max_token_len +1 # +1 for eos token
         if excessive_tokens>0:
-            sample[f"input_ids.{config['feature_to_trunc']}"] = sample[f"input_ids.{config['feature_to_trunc']}"][:-excessive_tokens]
+            sample[f"input_ids.{config['feature_to_trunc']}"] = sample[f"{config['feature_to_trunc']}.input_ids"][:-excessive_tokens]
 
-        task_name = config['task_name']
-        batch[f"input_ids.{task_name}"] = []
-        batch[f"labels.{task_name}"] = []
+        token_prepend = config['token_prepend']
+        batch[f"{token_prepend}.input_ids"] = []
+        batch[f"{token_prepend}.labels"] = []
         for f in config['input_features']:
-            input_col = f"input_ids.{config['task_name']}"
-            label_col = f"labels.{config['task_name']}"
-            batch[input_col] += sample[f"input_ids.{f}"]
-            batch[label_col] += [-100]*len(batch[input_col])
+            input_col = f"{token_prepend}.input_ids"
+            label_col = f"{token_prepend}.labels"
+            batch[input_col] += sample[f"{f}.input_ids"]
+            batch[label_col] += [-100]*len(sample[f"{f}.input_ids"])
 
         for tf in config['trainable_features']:
-            batch[input_col] += sample[f"input_ids.{tf}"]
-            batch[label_col] += sample[f"input_ids.{tf}"]
+            batch[input_col] += sample[f"{tf}.input_ids"]
+            batch[label_col] += sample[f"{tf}.input_ids"]
         
         # Append eos token
         batch[input_col] += [tokenizer.eos_token_id]
         batch[label_col] += [tokenizer.eos_token_id]
+        
+        # Truncate at end
+        batch[input_col] = batch[input_col][:max_token_len]
+        batch[label_col] = batch[label_col][:max_token_len]
 
     return batch
 
@@ -59,12 +67,6 @@ def tokenize_and_concat(sample, tokenizer, out_config, max_token_len=512):
     return batch
 
 #%%
-from dataclasses import dataclass
-from random import randint
-from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
-from transformers.utils import PaddingStrategy
-from transformers import PreTrainedTokenizerBase
-#from transformers import DPODataCollatorWithPadding
 @dataclass
 class DataCollatorWithPaddingAndLabels:
     """
@@ -133,49 +135,104 @@ class DataCollatorWithPaddingAndLabels:
                 batch[key] = val
         return batch
 
-def load_nbnn_dataset(tokenizer, max_token_len):
-    dataset_nbnn = load_dataset("NbAiLab/nbnn_translation")
+def add_task_feature(datasetDict, task_name):
+    datasetDict = datasetDict.map(lambda sample: {'task': task_name}, num_proc=None)
+    return datasetDict
+
+def load_nbnn_dataset(tokenizer, max_token_len, train_split="train[:1000]", task_name="nbnn"):
+    dataset_nbnn = DatasetDict({
+        'train' : load_dataset("NbAiLab/nbnn_translation", split=train_split),
+        'valid' : load_dataset("NbAiLab/nbnn_translation", split="dev"),
+        'test' : load_dataset("NbAiLab/nbnn_translation", split="test")
+    })
+
     out_config = [
     {
-        'task_name' : 'main',
-        'input_features' : ['nbo'],
+        'token_prepend' : 'main',
+        'input_features' : ['task','nbo'],
         'trainable_features' : ['nno'],
         'feature_to_trunc' : 'nbo'
-    },
-]
-    # rename dev to valid
-    dataset_nbnn['valid'] = dataset_nbnn['dev']
-    del dataset_nbnn['dev']
+    }
+    ]
+
+    dataset_nbnn = add_task_feature(dataset_nbnn, task_name)
 
     dataset_nbnn = dataset_nbnn.map(lambda sample: tokenize_and_concat(sample, tokenizer,out_config,max_token_len=max_token_len), num_proc=6) # 
     return dataset_nbnn
 
-def load_noralpaca(tokenizer, max_token_len):
-    dataset_noralpaca = load_dataset("NbAiLab/norwegian-alpaca")
+def load_parliament_dataset(tokenizer, max_token_len, train_split="train[:1000]", task_name="parliament"):
+    dataset_raw = DatasetDict({
+        'train' : load_dataset("NbAiLab/norwegian_parliament", split=train_split),
+        'valid' : load_dataset("NbAiLab/norwegian_parliament", split="validation"),
+        'test' : load_dataset("NbAiLab/norwegian_parliament", split="test")
+    })
     out_config = [
     {
-        'task_name' : 'main',
-        'input_features' : ['instruction','input'],
+        'token_prepend' : 'main',
+        'input_features' : ['task','label'],
+        'trainable_features' : ['text'],
+        'feature_to_trunc' : 'text'
+    },
+    ]
+
+    dataset_raw = add_task_feature(dataset_raw, task_name)
+
+    dataset_raw = dataset_raw.map(lambda sample: tokenize_and_concat(sample, tokenizer,out_config,max_token_len=max_token_len), num_proc=6) # 
+    return dataset_raw
+
+
+
+def load_noralpaca(tokenizer, max_token_len):
+    dataset_raw = load_dataset("NbAiLab/norwegian-alpaca")['train']
+
+    # Split into train/val/test
+    split_1 = dataset_raw.train_test_split(test_size=0.1, seed=42)
+    dataset_valid = split_1['test']
+    split_2 = split_1['train'].train_test_split(test_size=0.1, seed=42)
+    dataset_test = split_2['test']
+    dataset_train = split_2['train']
+
+    dataset_noralpaca = DatasetDict({"train": dataset_train, "valid": dataset_valid, "test": dataset_test})
+    dataset_noralpaca = add_task_feature(dataset_noralpaca, "noralpaca")
+    
+    out_config = [
+    {
+        'token_prepend' : 'main',
+        'input_features' : ['task','instruction','input'],
         'trainable_features' : ['output'],
         'feature_to_trunc' : 'input'
     },
     ]
     dataset_noralpaca = dataset_noralpaca.map(lambda sample: tokenize_and_concat(sample, tokenizer,out_config,max_token_len=max_token_len), num_proc=None)
     return dataset_noralpaca
+
+def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwargs):
+    """
+    batch_size = 4
+    max_token_len = 128
+    """
+    dataset_dict = {
+    'nbnn1000' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[:1000]", task_name="nbnn1000"),
+    'nbnn200' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[1000:1200]", task_name="nbnn200"),
+    'parliament' : load_parliament_dataset(tokenizer, max_token_len=max_token_len, train_split="train[:1000]"),
+    }
+    
+    data_collate = DataCollatorWithPaddingAndLabels(tokenizer=tokenizer, max_length=max_token_len)
+    ds = {}
+    dataloaders = {}
+    for phase in ["train","valid","test"]:
+        ds[phase] = datasets.concatenate_datasets([d[phase] for d in dataset_dict.values()]).shuffle(seed=42)
+        dataloaders[phase] = DataLoader(ds[phase], batch_size=batch_size, collate_fn=data_collate)
+    return dataloaders
 #%%
 if __name__ == "__main__":
     tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/opt-350m")
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    dataset_nbnn = load_nbnn_dataset(tokenizer, max_token_len=128)
-    dataset_noralpaca = load_noralpaca(tokenizer, max_token_len=128)
-    import datasets
-    ds = datasets.interleave_datasets([dataset_nbnn['train'], dataset_noralpaca['train']])
-    
-    data_collate = DataCollatorWithPaddingAndLabels(tokenizer=tokenizer, max_length=128)
-    dataloader = DataLoader(ds, batch_size=4, collate_fn=data_collate)
-    
-    dataloaders = {key: DataLoader(val, batch_size=4, collate_fn=data_collate) for key, val in dataset.items()}
 
-    for batch in dataloader:
-        batch['input_ids.main'].shape
-        batch['labels.main']
+    dataloaders = prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128)
+    
+    for batch in dataloaders['train']:
+        print(batch['main.input_ids'].shape, batch['main.attention_mask'].shape, batch['main.labels'].shape)
+        assert(batch['main.input_ids'].shape == batch['main.attention_mask'].shape == batch['main.labels'].shape)
+        tokenizer.batch_decode(batch['main.input_ids'])
+        break
