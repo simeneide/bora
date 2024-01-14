@@ -17,6 +17,77 @@ sorting=ynt
 
 \maketitle
 
+\section{Introduction}
+
+\section{Related works}
+\begin{itemize}
+    \item explain what pretraining LLM means
+    \item Explain how LORA fine tuned is done on each task
+    \item Explain how LORA finetuned also could be done on all tasks together if they have a similar data distribution.
+\end{itemize}
+
+
+\section{Method: Hierarchical LLM}
+
+\subsection{Task and Data Structure}
+We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task, our dataset comprises $N_d$ documents, with each document containing a sequence of $W_n$ tokens. This dataset structure is pivotal for our analysis and can be formally represented as:
+
+\begin{equation} \label{eq:data}
+\mathcal{D} = \{{ w_{d,n,1:W_n} }{n=1}^{N_d} \}_{d=1}^D
+\end{equation}
+
+In this notation, $w_{d,n,1:W_n}$ represents the token sequence in the $n^{th}$ document of the $d^{th}$ task. For simplification in subsequent discussions, we will omit the indices $d$ and $n$ when their reference is evident from the context.
+
+\subsection{Pretrained Autoregressive Language Model}
+Our foundational model is a pretrained autoregressive language model, denoted by its parameters $\theta_{full}$ and its architecture, referred to as $LLM$. The model's probability distribution is given by:
+
+\begin{equation} \label{eq:LLMprob}
+P(w_{1:W} | \theta_{full}) = \prod_{i=1}^{W-1} LLM(w_{i+1} | w_{1:i})
+\end{equation}
+%
+Here, $\theta_{full}$ represents the set of parameters obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$.
+We omit to write $\theta_{full}$ explicitly in the model, as it always depdends on it.
+
+\subsection{The Hierarchical LORA finetuned}
+For each task $d$ we have a LORA parameter set $\theta_d$ that is used to fine-tune to that task.
+Hence, the likelihood of our problem follows from combining equation \ref{eq:data} and \ref{eq:LLMprob}:
+\begin{equation} \label{eq:lik}
+    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d)
+\end{equation}
+%
+
+The prior of 
+
+\begin{equation}
+    P(\theta_{1:D}) = \prod_{d=1}^D N(\theta_d ; \Theta, \sigma I)
+\end{equation}
+%
+where $\Theta$ is a set of hierarchical parameters, $I$ is a unit diagonal matrix and $\sigma \leq 0$ is a scalar hyperparameter setting how similar task parameters $\theta_d$ should be the hierarchical parameters $\Theta$.
+
+\begin{itemize}
+    \item Typically one finetune each task separately, as written in \ref{eq:lik}.
+    \item If the D tasks are more similar to eachother than the pretraining corpus, the optimal parameters $\hat{\theta}_d$ should share some information during training in order to maximize their likelihood.
+\end{itemize}
+
+
+\section{Experimental setup}
+We choose the `opt-350m` base model and construct three tasks that it has likely not seem as they are in Norwegian:
+\begin{itemize}
+    \item A subset of Norwegian parliament speeches of politicians containing 1000 examples
+    \item A subset of a translation dataset from Norwegian bokmål to Norwegian Nynorsk (NbAiLab-nbnn-translation) containing 1000 examples
+    \item A subset of a translation dataset from Norwegian bokmål to Norwegian Nynorsk (NbAiLab-nbnn-translation) containing 200 examples
+\end{itemize}
+
+These datasets will have a shared domain (Norwegian) that is different from what the pretrained foundational model is trained on.
+We use two tasks containing the same dataset distribution to see how sharing knowledge through the hierarchical prior can benefit datasets with few examples.
+
+
+\section{Conclusion}
+
+
+
+
+
 \section*{Background}
 Low-Rank  Adaption (LoRA) of an existing large-scale pre-trained Large Language Models (LLM) \cite{hu_lora_2021} has become a popular go-to approach when solving a specific text problem.
 
@@ -36,7 +107,7 @@ The final posterior will look something like this:
 \begin{equation} \label{eq:posterior}
     \sum_{n=1}^N  \sum_{i \in D_n} P(text_i | \theta_n) + \sum_{n=1}^N N(\theta_n | \Theta, \sigma)
 \end{equation}
-
+%
 where
 $D_n$ is the dataset corresponding to task $n$,
 $P(text_i | \theta)$ is the likelihood of sentence $text_i$ evaluated on the parameters $\theta$,
@@ -64,11 +135,7 @@ We have the following research questions
 We want to evaluate our research questions by (1) evaluating it on an open benchmark (TULU-v2-mix \cite{ivison_camels_2023}), (2) an evaluation by an GPT-4 agent, and (3) an online evaluation as a journalistic assistant in a news media article CMS, suggesting article attributes such as titles and tags.
 
 
-\section{Introduction}
-\section{Related works}
-\section{Method: Hierarchical LLM}
-\section{Experiments}
-\section{Conclusion}
+
 
 
 \printbibliography
