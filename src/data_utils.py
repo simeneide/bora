@@ -212,9 +212,9 @@ def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwa
     max_token_len = 128
     """
     dataset_dict = {
-    'nbnn1000' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[:1000]", task_name="nbnn1000"),
-    'nbnn200' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[1000:1200]", task_name="nbnn200"),
-    'parliament' : load_parliament_dataset(tokenizer, max_token_len=max_token_len, train_split="train[:1000]"),
+    'nbnn10k' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[:10000]", task_name="nbnn10k"),
+    'nbnn500' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[10000:10500]", task_name="nbnn500"),
+    'parliament' : load_parliament_dataset(tokenizer, max_token_len=max_token_len, train_split="train", task_name="parliament"),
     }
     
     data_collate = DataCollatorWithPaddingAndLabels(tokenizer=tokenizer, max_length=max_token_len)
