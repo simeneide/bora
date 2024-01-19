@@ -8,8 +8,8 @@ params = {
     'model_name': "facebook/opt-350m",
     'max_token_length': 256,
     'batch_size' : 4,
-    'load_in_8bit' : True,
-    'tasks' : ["nbnn10k","parliament", "nbnn500"],
+    'load_in_8bit' : False,
+    'tasks' : ["nbnn10k","parliament", "nbnn500",'randomtask'],
 
     # LORA PARAMETERS
     'lora_dim' : 16,
@@ -60,8 +60,6 @@ class LightningHier(L.LightningModule):
         self.model = model
         self.tokenizer = tokenizer
         self.outputdir = outputdir
-        self.average_training_loss = None
-        self.average_validation_loss = None
         self.save_only_last_epoch = save_only_last_epoch
         self.learning_rate = learning_rate
         self.accumulate_grad_batches = accumulate_grad_batches
@@ -103,7 +101,7 @@ class LightningHier(L.LightningModule):
     def step(self, batch, phase):
         batch_tasks = np.array(batch['task'])
         logs = {}
-        loss_loglik = 0
+        loss_loglik_dict = {}
         for task in self.tasks:
             # task = self.tasks[0]
             current_task = (task == batch_tasks)
@@ -113,7 +111,6 @@ class LightningHier(L.LightningModule):
             batch_task = {key : val[current_task] 
                           for key, val in batch.items() 
                           if isinstance(val, torch.Tensor)}
-            #batch['main.input_ids'][current_task].shape
 
             self.model.set_adapter(task)
             output = self(
@@ -121,32 +118,33 @@ class LightningHier(L.LightningModule):
                 attention_mask = batch_task['main.attention_mask'], 
                 labels=batch_task['main.labels'])
 
-            logs[f"{phase}/loglik/{task}"] = -output['loss']
-            loss_loglik += output['loss']
-        
-        #
-        # hierarchical loss
-        with torch.no_grad():
-            self.model.set_adapter(self.tasks + ["base_adapter"]) # Set all adapters to active again
-            
-            l2_norms = self.compute_l2_norms_of_adapters()
-            if phase=="train":
-                self.log_dict({f"l2_norm/{key}" : val for key, val in l2_norms.items()}, on_epoch=False, sync_dist=True, on_step=True)
+            loss_loglik_dict[task] = output['loss']
 
-            reg_loss = sum([val for key, val in l2_norms.items() if "base" not in key])
-            
-            logs[f'{phase}/regloss'] = reg_loss
-        DO_HIER_LOSS = False
+        ### hierarchical loss
+        self.model.set_adapter(self.tasks + ["base_adapter"]) # Set all adapters to active again
+        
+        l2_norms = self.compute_l2_norms_of_adapters()
+        if phase=="train":
+            self.log_dict(l2_norms, on_epoch=False, sync_dist=True, on_step=True)
+
+        ## Compute total loss
+        reg_loss = sum([val for key, val in l2_norms.items() if "l2_from_base" in key])
+        
+        loss_loglik = sum(loss_loglik_dict.values())
+        DO_HIER_LOSS = True
         if DO_HIER_LOSS:
             loss = loss_loglik + reg_loss
         else:
             loss = loss_loglik
-            
-
         ## LOGGING
+        
+        #
+        #logs[f'{phase}/regloss'] = reg_loss
+        for key, val in loss_loglik_dict.items():
+            logs[f"{phase}/loglik/{key}"] = -val
         logs[f'{phase}/loglik'] = -loss_loglik
         
-        logs[f'{phase}/loss'] = loss  
+        logs[f'{phase}/loss'] = loss
         for key, val in logs.items():
             self.log(key, val, on_epoch=True, sync_dist=True if phase=="val" else False)
         
@@ -162,17 +160,11 @@ class LightningHier(L.LightningModule):
                     adapter_par = self.model.get_parameter(adapter_key)
                     if adapter_par.grad is not None:
                         v = adapter_par.grad.norm().item()
-                    else:
-                        v=None
-                    print(adapter_key,"\t", v)
-
-
-        self.model.zero_grad()
+                        print(adapter_key,"\t", v)
+        self.model.zero_grad()        
         """
 
         return loss
-    def on_before_backward(self, loss):
-        self.model.set_adapter(self.tasks + ["base_adapter"])
 
     def training_step(self, batch, batch_idx):
         return self.step(batch, phase="train")
@@ -182,7 +174,6 @@ class LightningHier(L.LightningModule):
 
     def configure_optimizers(self):
         """ configure optimizers """
-        self.model.set_adapter(self.tasks) #  + ["base_adapter"]
         count_model_pars(self.model)
         return AdamW(self.parameters(), lr=self.learning_rate,weight_decay=self.weight_decay)
 
@@ -253,7 +244,6 @@ def load_model(params, checkpoint_path=None):
 pl_model = load_model(params)
 dataloaders = data_utils.prepare_dataloaders(tokenizer=pl_model.tokenizer, **params)
 
-
 #%%
 callbacks = [
     L.pytorch.callbacks.TQDMProgressBar(refresh_rate=5), 
@@ -285,7 +275,8 @@ trainer = L.Trainer(
     #limit_val_batches=1,
     log_every_n_steps=params['log_every_n_steps']
 )
-trainer.fit(pl_model, 
+#%%
+trainer.fit(pl_model,
             train_dataloaders=dataloaders['train'], 
             val_dataloaders=dataloaders['valid'])
 #%% RUN FOR INTERACTIVE
