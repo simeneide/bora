@@ -77,16 +77,23 @@ class LightningHier(L.LightningModule):
         return output
     
     def compute_l2_norms_of_adapters(self):
-        l2_norms = {key : 0.0 for key in self.tasks}
-        l2_norms["base"] = 0.0
+        l2_norms = {}
+        for key in self.tasks:
+            l2_norms[f"l2/{key}"] = 0
+            l2_norms[f"l2_from_base/{key}"] = 0
+        l2_norms["l2/base"] = 0.0
+
         for base_key, val in self.model.named_parameters():
             if "base_adapter" in base_key:
-                l2_norms["base"] += torch.norm(self.model.get_parameter(base_key))
-                # compare l2 norm between base adapter par and all other adapters
+                l2_norms["l2/base"] += torch.norm(self.model.get_parameter(base_key))
+                
                 for adapter in self.tasks:
                     adapter_key = base_key.replace("base_adapter", adapter)
+                    # compute l2 norm of adapter
+                    l2_norms[f"l2/{adapter}"] += torch.norm(self.model.get_parameter(adapter_key))
+                    # compute l2 norm between base adapter and adapter
                     diff = torch.norm(self.model.get_parameter(base_key) - self.model.get_parameter(adapter_key))
-                    l2_norms[adapter] += diff
+                    l2_norms[f"l2_from_base/{adapter}"] += diff
         return l2_norms
     
     #def on_validation_start(self, *args, **kwargs):
