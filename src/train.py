@@ -10,7 +10,7 @@ params = {
     'batch_size' : 4,
     'load_in_8bit' : False,
     'tasks' : ["nbnn10k","parliament", "nbnn500",'randomtask'],
-
+    'reg_weight' : 0.0,
     # LORA PARAMETERS
     'lora_dim' : 16,
     'lora_alpha' : 16,
@@ -50,6 +50,7 @@ class LightningHier(L.LightningModule):
         learning_rate: float = 0.00001,
         accumulate_grad_batches: int = 1,
         weight_decay:  float = 0.0,
+        reg_weight: float = 0.0,
         *args, **kwargs
     ):
         """
@@ -64,6 +65,7 @@ class LightningHier(L.LightningModule):
         self.learning_rate = learning_rate
         self.accumulate_grad_batches = accumulate_grad_batches
         self.weight_decay = weight_decay
+        self.reg_weight = reg_weight
 
     def forward(self, input_ids, attention_mask, labels=None, *args, **kwargs):
         """ forward step """
@@ -131,9 +133,8 @@ class LightningHier(L.LightningModule):
         reg_loss = sum([val for key, val in l2_norms.items() if "l2_from_base" in key])
         
         loss_loglik = sum(loss_loglik_dict.values())
-        DO_HIER_LOSS = True
-        if DO_HIER_LOSS:
-            loss = loss_loglik + reg_loss
+        if self.reg_weight>0:
+            loss = loss_loglik + reg_loss*self.reg_weight
         else:
             loss = loss_loglik
         ## LOGGING
@@ -264,7 +265,7 @@ if params['early_stopping_patience_epochs'] > 0:
 print(params)
 trainer = L.Trainer(
     callbacks=callbacks,
-    logger = L.pytorch.loggers.TensorBoardLogger("logs"),
+    logger = L.pytorch.loggers.TensorBoardLogger("logs",name = f"reg:{params['reg_weight']}"),
     max_epochs=params['max_epochs'],
     #strategy="ddp",
     devices=1, 
