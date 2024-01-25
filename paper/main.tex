@@ -20,6 +20,7 @@ sorting=ynt
 \section{Introduction}
 
 \section{Related works}
+[This might be background?]
 \begin{itemize}
     \item explain what pretraining LLM means
     \item Explain how LORA fine tuned is done on each task
@@ -33,7 +34,7 @@ sorting=ynt
 We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task, our dataset comprises $N_d$ documents, with each document containing a sequence of $W_n$ tokens. This dataset structure is pivotal for our analysis and can be formally represented as:
 
 \begin{equation} \label{eq:data}
-\mathcal{D} = \{{ w_{d,n,1:W_n} }{n=1}^{N_d} \}_{d=1}^D
+\mathcal{D} = \{ \{ w_{d,n,1:W_n} \}_{n=1}^{N_d} \}_{d=1}^D
 \end{equation}
 
 In this notation, $w_{d,n,1:W_n}$ represents the token sequence in the $n^{th}$ document of the $d^{th}$ task. For simplification in subsequent discussions, we will omit the indices $d$ and $n$ when their reference is evident from the context.
