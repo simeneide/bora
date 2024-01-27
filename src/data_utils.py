@@ -208,6 +208,96 @@ def load_noralpaca(tokenizer, max_token_len):
     dataset_noralpaca = dataset_noralpaca.map(lambda sample: tokenize_and_concat(sample, tokenizer,out_config,max_token_len=max_token_len), num_proc=None)
     return dataset_noralpaca
 
+
+def load_talkofnorway_dataset(tokenizer, max_token_len, min_token_length=10, num_tasks=3):
+    """
+    num_tasks = 3 # cut the number of speakers
+    max_token_len=512 
+    min_token_length=50
+    """
+    min_examples, max_examples = 200, 1000
+    raw = (pd.read_csv("data/ton.csv")
+        # select columns full name, party affiliation, time and text
+        .pipe(lambda df: df[['rep_name', 'text']]) # 'time','party_name', 
+        .pipe(lambda df: df.dropna())
+        # only keep speakers that have between 100 and 500 examples
+        .pipe(lambda df: df.groupby('rep_name').filter(lambda x: min_examples < len(x) < max_examples))
+        # roughly remove text that is shorter than min_token_length tokens or bigger than max_token_len tokens assuming 4 characters per token
+        .pipe(lambda df: df[df['text'].str.len() > 4*min_token_length])
+        #.pipe(lambda df: df[df['text'].str.len() < 4*max_token_len])
+        # create feature "task" to be lowercase and only letters, not even punctuation
+        .pipe(lambda df: df.assign(task=df['rep_name'].str.replace('.', '').str.replace('[^a-z]', '').str.lower()))
+        
+        # Reset index
+        .pipe(lambda df: df.reset_index(drop=True))
+        )
+    """ Raw looks like
+    time	task	party_name	text
+    0	1998-10-20T00:00:00+02:00	Sonja Irene Sjøli	Høyre	Det er en bred forståelse blant fagfolk og pol...
+    1	1998-10-20T00:00:00+02:00	Dagfinn Høybråten	Kristelig Folkeparti	Et av hovedmålene for helsetjenesten i Norge e...
+    2	1998-10-20T00:00:00+02:00	Sonja Irene Sjøli	Høyre	Jeg takker helseministeren for et fyldig og gr...
+    3	1998-10-20T00:00:00+02:00	Sonja Irene Sjøli	Høyre	
+    """
+
+    # Group by task and create train and val datasets for each
+    train_dfs = {}
+    val_dfs = {}
+    test_dfs = {}
+    task_stats = {}
+
+    for task, df in raw.groupby('task'):
+        # 50% train, 25% val, 25% test
+        train_df = df.sample(frac=0.5, random_state=42)
+        temp_df = df.drop(train_df.index)
+        val_df = temp_df.sample(frac=0.5, random_state=42)
+        test_df = temp_df.drop(val_df.index)
+        train_dfs[task], val_dfs[task], test_dfs[task] = train_df, val_df, test_df
+
+        task_stats[task] = {
+            'train_len' : len(train_df),
+            'val_len' : len(val_df),
+            'test_len' : len(test_df),
+        }
+        if len(train_dfs) == num_tasks:
+            break
+    # Concatenate all train and val datasets
+    train_df = pd.concat(train_dfs.values()).reset_index(drop=True)
+    val_df = pd.concat(val_dfs.values()).reset_index(drop=True)
+    test_df = pd.concat(test_dfs.values()).reset_index(drop=True)
+
+    # Convert into datasets format
+    ds = datasets.DatasetDict({
+        'train': datasets.Dataset.from_pandas(train_df),
+        'valid': datasets.Dataset.from_pandas(val_df),
+        'test': datasets.Dataset.from_pandas(test_df)
+    })
+
+    out_config = [
+    {
+        'token_prepend' : '',
+        'input_features' : ['task'],
+        'trainable_features' : ['text'],
+        'feature_to_trunc' : 'text'
+    },
+    ]
+    ds = ds.map(lambda sample: tokenize_and_concat(sample, tokenizer,out_config,max_token_len=max_token_len), num_proc=None)
+
+    return ds, task_stats
+
+def prepare_talkofnorway_dataloaders(tokenizer, batch_size=4, max_token_len=128, num_tasks=3, *args, **kwargs):
+    """
+    batch_size=4
+    max_token_len=128
+    num_tasks=3
+    """
+    ds, task_stats = load_talkofnorway_dataset(tokenizer, max_token_len=max_token_len, num_tasks=num_tasks)
+    ds = ds.shuffle(seed=42)
+    data_collate = DataCollatorWithPaddingAndLabels(tokenizer=tokenizer, max_length=max_token_len)
+    dataloaders = {}
+    for phase in ["train","valid","test"]:
+        dataloaders[phase] = DataLoader(ds[phase], batch_size=batch_size, collate_fn=data_collate)
+    return dataloaders, task_stats
+
 def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwargs):
     """
     batch_size = 4
@@ -218,7 +308,6 @@ def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwa
     'nbnn500' : load_nbnn_dataset(tokenizer, max_token_len=max_token_len, train_split="train[10000:10500]", task_name="nbnn500"),
     'parliament' : load_parliament_dataset(tokenizer, max_token_len=max_token_len, train_split="train", task_name="parliament"),
     }
-    
     data_collate = DataCollatorWithPaddingAndLabels(tokenizer=tokenizer, max_length=max_token_len)
     ds = {}
     dataloaders = {}
@@ -230,11 +319,12 @@ def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwa
 if __name__ == "__main__":
     tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/opt-350m")
     tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    dataloaders = prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128)
+    dataloaders, task_stats = prepare_talkofnorway_dataloaders(tokenizer, batch_size=4, max_token_len=512, num_tasks=3)
+    #dataloaders = prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128)
     
     for batch in dataloaders['train']:
-        print(batch['main.input_ids'].shape, batch['main.attention_mask'].shape, batch['main.labels'].shape)
-        assert(batch['main.input_ids'].shape == batch['main.attention_mask'].shape == batch['main.labels'].shape)
-        tokenizer.batch_decode(batch['main.input_ids'])
+        print(batch['input_ids'].shape, batch['attention_mask'].shape, batch['labels'].shape)
+        assert(batch['input_ids'].shape == batch['attention_mask'].shape == batch['labels'].shape)
+        for l in tokenizer.batch_decode(batch['input_ids'], skip_special_tokens=False):
+            print(l)
         break
