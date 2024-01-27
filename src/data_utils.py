@@ -37,13 +37,15 @@ def concat_features(sample, out_config, tokenizer, max_token_len):
         excessive_tokens = tot_tokens - max_token_len +1 # +1 for eos token
         if excessive_tokens>0:
             sample[f"input_ids.{config['feature_to_trunc']}"] = sample[f"{config['feature_to_trunc']}.input_ids"][:-excessive_tokens]
-
-        token_prepend = config['token_prepend']
-        batch[f"{token_prepend}.input_ids"] = []
-        batch[f"{token_prepend}.labels"] = []
+        if config['token_prepend']!="":
+            token_prepend = f"{config['token_prepend']}."
+        else:
+            token_prepend = ""
+        batch[f"{token_prepend}input_ids"] = []
+        batch[f"{token_prepend}labels"] = []
         for f in config['input_features']:
-            input_col = f"{token_prepend}.input_ids"
-            label_col = f"{token_prepend}.labels"
+            input_col = f"{token_prepend}input_ids"
+            label_col = f"{token_prepend}labels"
             batch[input_col] += sample[f"{f}.input_ids"]
             batch[label_col] += [-100]*len(sample[f"{f}.input_ids"])
 
