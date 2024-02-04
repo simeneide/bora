@@ -223,7 +223,7 @@ def load_talkofnorway_dataset(tokenizer, max_token_len, min_token_length=10, num
         .pipe(lambda df: df.dropna())
         # only keep speakers that have between 100 and 500 examples
         .pipe(lambda df: df.groupby('rep_name').filter(lambda x: min_examples < len(x) < max_examples))
-        # roughly remove text that is shorter than min_token_length tokens or bigger than max_token_len tokens assuming 4 characters per token
+        # roughly remove text that is shorter than min_token_length tokens
         .pipe(lambda df: df[df['text'].str.len() > 4*min_token_length])
         #.pipe(lambda df: df[df['text'].str.len() < 4*max_token_len])
         # create feature "task" to be lowercase and only letters, not even punctuation

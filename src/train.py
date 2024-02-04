@@ -3,31 +3,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from accelerate import Accelerator
 import torch
 import data_utils
-
-params = {
-    'model_name': "facebook/opt-350m",
-    'max_token_length': 256,
-    'batch_size' : 4,
-    'load_in_8bit' : False,
-    'tasks' : ["nbnn10k","parliament", "nbnn500",'randomtask'],
-    'reg_weight' : 0.0,
-    # LORA PARAMETERS
-    'lora_dim' : 16,
-    'lora_alpha' : 16,
-    'lora_dropout' : 0.0,
-    'lora_target_modules' : None,
-    # OPTIM PARAMETERS
-    'learning_rate' : 0.0001,
-    'weight_decay' : 0,
-    'batch_size' : 32,
-    'accumulate_grad_batches' : 1,
-    'early_stopping_patience_epochs' : 5,
-    'max_epochs' : 100,
-    'precision': 32,
-    'log_every_n_steps' : 10,
-    'val_check_interval' : 0.25, # 0.25 = 4 times per epoch
-    
-}
 #%%
 from torch.optim import AdamW, SGD
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -44,20 +19,22 @@ class LightningHier(L.LightningModule):
         self,
         tokenizer,
         model,
-        tasks,
+        task_stats,
         outputdir: str = "outputs",
         save_only_last_epoch: bool = False,
         learning_rate: float = 0.00001,
         accumulate_grad_batches: int = 1,
         weight_decay:  float = 0.0,
         reg_weight: float = 0.0,
+        global_only: bool = False,
         *args, **kwargs
     ):
         """
         initiates a PyTorch Lightning Model
         """
         super().__init__()
-        self.tasks = tasks
+        self.task_stats= task_stats
+        self.tasks = list(task_stats.keys())
         self.model = model
         self.tokenizer = tokenizer
         self.outputdir = outputdir
@@ -66,6 +43,7 @@ class LightningHier(L.LightningModule):
         self.accumulate_grad_batches = accumulate_grad_batches
         self.weight_decay = weight_decay
         self.reg_weight = reg_weight
+        self.global_only = global_only
 
     def forward(self, input_ids, attention_mask, labels=None, *args, **kwargs):
         """ forward step """
@@ -114,12 +92,17 @@ class LightningHier(L.LightningModule):
                           for key, val in batch.items() 
                           if isinstance(val, torch.Tensor)}
 
-            self.model.set_adapter(task)
-            output = self(
-                input_ids = batch_task['main.input_ids'], 
-                attention_mask = batch_task['main.attention_mask'], 
-                labels=batch_task['main.labels'])
+            # Set adapter to relevant task except if global_only is True
+            if not self.global_only:
+                self.model.set_adapter(task)
+            else:
+                self.model.set_adapter("base_adapter")
 
+            output = self(
+                input_ids = batch_task['input_ids'], 
+                attention_mask = batch_task['attention_mask'], 
+                labels=batch_task['labels'])
+            
             loss_loglik_dict[task] = output['loss']
 
         ### hierarchical loss
@@ -132,7 +115,7 @@ class LightningHier(L.LightningModule):
         ## Compute total loss
         reg_loss = sum([val for key, val in l2_norms.items() if "l2_from_base" in key])
         
-        loss_loglik = sum(loss_loglik_dict.values())
+        loss_loglik = sum([val*self.task_stats[task]['train_len'] for task, val in loss_loglik_dict.items()])
         if self.reg_weight>0:
             loss = loss_loglik + reg_loss*self.reg_weight
         else:
@@ -140,10 +123,14 @@ class LightningHier(L.LightningModule):
         ## LOGGING
         
         #
-        #logs[f'{phase}/regloss'] = reg_loss
         for key, val in loss_loglik_dict.items():
-            logs[f"{phase}/loglik/{key}"] = -val
-        logs[f'{phase}/loglik'] = -loss_loglik
+            logs[f"{phase}_all/loglik/{key}"] = -val
+
+        
+
+        avg_loglik = -sum(loss_loglik_dict.values())/len(loss_loglik_dict)
+        logs[f'{phase}/loglik'] = avg_loglik
+        logs[f'{phase}/perplexity'] = torch.exp(-avg_loglik)
         
         logs[f'{phase}/loss'] = loss
         for key, val in logs.items():
@@ -189,7 +176,13 @@ def count_model_pars(model):
     print(f"Model has {num_pars/1e6:.1f}m parameters of which {num_trainable/1e6:.1f}m are trainable ({num_trainable/num_pars*100:.2f}%)")
     return num_pars, num_trainable
 
-def load_model(params, checkpoint_path=None):
+def load_tokenizer(params):
+    tokenizer = AutoTokenizer.from_pretrained(params['model_name'])
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side='right' # needed for lama as they pad left
+    return tokenizer
+
+def load_model(params, tokenizer, task_stats, checkpoint_path=None):
     # Load model given parameters in params
     device_index = Accelerator().process_index
     device_map = {"": device_index}
@@ -216,73 +209,107 @@ def load_model(params, checkpoint_path=None):
     # Add adapters
     model.add_adapter(lora_config, adapter_name="base_adapter")
     
-    for task in params['tasks']:
+    for task in task_stats.keys():
         model.add_adapter(lora_config, adapter_name=task)
         count_model_pars(model)
 
     # Set parameters in adapters to be equivalent to base_adapter
     for base_key, val in model.named_parameters():
         if "base_adapter" in base_key:
-            for adapter in params['tasks']:
+            for adapter in task_stats.keys():
                 adapter_key = base_key.replace("base_adapter", adapter)
                 model.get_parameter(adapter_key).data = model.get_parameter(base_key).data.detach().clone()
                 # Add some noise to the adapters
                 model.get_parameter(adapter_key).data += torch.randn_like(model.get_parameter(adapter_key).data) * 0.001
 
-    tokenizer = AutoTokenizer.from_pretrained(params['model_name'])
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side='right' # needed for lama as they pad left
-
     if checkpoint_path:
         print("loading from checkpoint..")
-        pl_model = LightningHier.load_from_checkpoint(checkpoint_path, tokenizer=tokenizer, model=model, **params)
+        pl_model = LightningHier.load_from_checkpoint(checkpoint_path, tokenizer=tokenizer, model=model, task_stats=task_stats, **params)
         del model
         torch.cuda.empty_cache()
     else:
-        pl_model = LightningHier(tokenizer=tokenizer, model=model, **params)
+        pl_model = LightningHier(tokenizer=tokenizer, model=model, task_stats=task_stats, **params)
     return pl_model
+def main(overwrite_params={}):
+    params = {
+        'model_name': "facebook/opt-350m",
+        'max_token_length': 256,
+        'batch_size' : 64,
+        'load_in_8bit' : False,
+        'num_tasks' : 25,
+        'reg_weight' : 10.1,
+        "global_only" : False,
+        # LORA PARAMETERS
+        'lora_dim' : 16,
+        'lora_alpha' : 16,
+        'lora_dropout' : 0.0,
+        'lora_target_modules' : None,
+        # OPTIM PARAMETERS
+        'learning_rate' : 0.0001,
+        'weight_decay' : 0,
+        'accumulate_grad_batches' : 1,
+        'early_stopping_patience_epochs' : 8,
+        'max_epochs' : 1000,
+        'precision': 32,
+        'log_every_n_steps' : 10,
+        'val_check_interval' : 1.0, # 0.25 = 4 times per epoch
+    }
+    for key, val in overwrite_params.items():
+        params[key] = val
 
-pl_model = load_model(params)
-dataloaders = data_utils.prepare_dataloaders(tokenizer=pl_model.tokenizer, **params)
+    tokenizer = load_tokenizer(params)
+    dataloaders, task_stats = data_utils.prepare_talkofnorway_dataloaders(tokenizer, **params)
+    task_stats
+    pl_model = load_model(params, task_stats=task_stats, tokenizer=tokenizer)
+    #%%
+    callbacks = [
+        L.pytorch.callbacks.TQDMProgressBar(refresh_rate=5), 
+        L.pytorch.callbacks.ModelCheckpoint(monitor="val/loglik", mode="max", save_top_k=1),
+        ]
 
-#%%
-callbacks = [
-    L.pytorch.callbacks.TQDMProgressBar(refresh_rate=5), 
-    L.pytorch.callbacks.ModelCheckpoint(monitor="val/loss"),
-    ]
+    if params['early_stopping_patience_epochs'] > 0:
+        early_stop_callback = L.pytorch.callbacks.early_stopping.EarlyStopping(
+            monitor="val/loglik",
+            min_delta=0.00,
+            patience=params['early_stopping_patience_epochs'],
+            verbose=True,
+            mode="max",
+        )
+        callbacks.append(early_stop_callback)
 
-if params['early_stopping_patience_epochs'] > 0:
-    early_stop_callback = L.pytorch.callbacks.early_stopping.EarlyStopping(
-        monitor="val/loss",
-        min_delta=0.00,
-        patience=params['early_stopping_patience_epochs'],
-        verbose=True,
-        mode="min",
+    # prepare trainer
+    print(params)
+    trainer = L.Trainer(
+        callbacks=callbacks,
+        logger = L.pytorch.loggers.TensorBoardLogger("logs",name = f"1kepoch-reg:{params['reg_weight']}-lr:{params['learning_rate']}-global:{params['global_only']}-loradim:{params['lora_dim']}"),
+        max_epochs=params['max_epochs'],
+        #strategy="ddp",
+        devices=1, 
+        accelerator="gpu",
+        accumulate_grad_batches=params['accumulate_grad_batches'],
+        precision=params['precision'],
+        val_check_interval=params['val_check_interval'],
+        #limit_val_batches=1,
+        log_every_n_steps=params['log_every_n_steps']
     )
-    callbacks.append(early_stop_callback)
+    #%%
+    trainer.fit(pl_model,
+                train_dataloaders=dataloaders['train'], 
+                val_dataloaders=dataloaders['valid'])
+    
+if __name__ == "__main__":
+    main(overwrite_params={"reg_weight" : 0, "global_only" : True, "learning_rate" : 0.00001,'lora_dim' : 2,'lora_alpha' : 2})
 
-# prepare trainer
-print(params)
-trainer = L.Trainer(
-    callbacks=callbacks,
-    logger = L.pytorch.loggers.TensorBoardLogger("logs",name = f"reg:{params['reg_weight']}"),
-    max_epochs=params['max_epochs'],
-    #strategy="ddp",
-    devices=1, 
-    accelerator="gpu",
-    accumulate_grad_batches=params['accumulate_grad_batches'],
-    precision=params['precision'],
-    val_check_interval=params['val_check_interval'],
-    #limit_val_batches=1,
-    log_every_n_steps=params['log_every_n_steps']
-)
-#%%
-trainer.fit(pl_model,
-            train_dataloaders=dataloaders['train'], 
-            val_dataloaders=dataloaders['valid'])
+    l1 = [0.1,1,5,10]
+    l2 = [1000,100,10]
+    for regloss in l1:
+        main(overwrite_params={"reg_weight" : regloss, "learning_rate" : regloss*0.00001,'lora_dim' : 2,'lora_alpha' : 2})
+    #main()
 #%% RUN FOR INTERACTIVE
+"""
 batch = next(iter(dataloaders['train']))
 batch = {key : val.to(pl_model.model.device) if isinstance(val, torch.Tensor) else val for key, val in batch.items()}
 self = pl_model
 phase="train"
-# %%
+"""
+

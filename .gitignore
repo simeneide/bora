@@ -7,5 +7,5 @@
 *.gz
 *.fdb_latexmk
 *.xml
-logs/
+*logs*/
 *.cpython*
