@@ -9,3 +9,6 @@
 *.xml
 *logs*/
 *.cpython*
+events.out*
+*.ckpt
+hparams.yaml
