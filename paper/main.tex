@@ -19,8 +19,20 @@ sorting=ynt
 \maketitle
 
 \section{Introduction}
+Large Language Models (LLM) have become a popular tool for solving a wide range of text problems. LLMs are typically pretrained on a large and diverse dataset, and then fine-tuned on a specific task. The fine-tuning process is often done by minimizing the negative log-likelihood of the task-specific dataset, and the resulting model is then used to make predictions on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by 10'000 times and the GPU memory requirement by 3 times, while still outperforming other fine-tuning techniques (\cite{hu_lora_2021}).
+
+This paper presents a generalization of the LoRA fine-tuning method for multi-task problems, which we refer to as Hierarchical LoRA. The Hierarchical LoRA method allows tasks to share information between each other through a global parameter set, and can be seen as a generalization of the two conventional approaches for multi-task problems: (1) finetuning each task separately, and (2) training one model for all tasks. We evaluate the Hierarchical LoRA method on a benchmark dataset, and show that there exist a trade-off between the global and task-specific parameters that can be tuned to optimize the model's performance.
+
+\begin{itemize}
+    \item Typically one finetune each task separately, as written in \ref{eq:lik}.
+    \item If the D tasks are more similar to eachother than the pretraining corpus, the optimal parameters $\hat{\theta}_d$ should share some information during training in order to maximize their likelihood.
+\end{itemize}
 
 \section{Related works}
+
+\subsection{Low-Rank Adaption of Language Models}
+Low-Rank Adaption (LoRA)
+
 [This might be background?]
 \begin{itemize}
     \item explain what pretraining LLM means
@@ -28,16 +40,16 @@ sorting=ynt
     \item Explain how LORA finetuned also could be done on all tasks together if they have a similar data distribution.
 \end{itemize}
 
-
 \section{Method: Hierarchical LLM}
 
+
 \subsection{Task and Data Structure}
-We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task, our dataset comprises $N_d$ documents, with each document containing a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
+We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task $d$, we have a dataset $\mathcal{D}_d$ containing $N_d$ documents, with each document consisting of a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
 
 \begin{equation} \label{eq:data}
-\mathcal{D} = \{ \{ w_{d,n,1:W_n} \}_{n=1}^{N_d} \}_{d=1}^D
+\mathcal{D} = \{ \mathcal{D}_d \}_{d=1}^D  =  \{ \{ w_{d,n,1:W_n} \}_{n=1}^{N_d} \}_{d=1}^D
 \end{equation}
-
+%
 In this notation, $w_{d,n,1:W_n}$ represents the token sequence in the $n^{th}$ document of the $d^{th}$ task. For simplification in subsequent discussions, we will omit the indices $d$ and $n$ when their reference is evident from the context.
 
 \subsection{Pretrained Autoregressive Language Model}
@@ -48,37 +60,56 @@ P(w_{1:W} | \theta_{full}) = \prod_{i=1}^{W-1} LLM(w_{i+1} | w_{1:i})
 \end{equation}
 %
 Here, $\theta_{full}$ represents the set of parameters obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$.
-We omit to write $\theta_{full}$ explicitly in the model, as it always depdends on it.
+We omit to write $\theta_{full}$ explicitly in the model, as the autoregressive language model always depend on these parameters.
 
-\subsection{The Hierarchical LORA finetuned}
+\subsection{The Hierarchical LoRA model}
 For each task $d$ we have a LORA parameter set $\theta_d$ that is used to fine-tune to that task.
 Hence, the likelihood of our problem follows from combining equation \ref{eq:data} and \ref{eq:LLMprob}:
 \begin{equation} \label{eq:lik}
-    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d)
+    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d)
+\end{equation}
+%
+%
+Each task will share some information with each other, and we model this by introducing a Gaussian hierarchical prior over the task parameters $\theta_{1:D}$, given by
+\begin{equation} \label{eq:prior}
+    P(\theta_{1:D} | \Theta, \tau ) = \prod_{d=1}^D N(\theta_d ; \Theta, \frac{1}{\tau} I)
+\end{equation}
+%
+where $\Theta$ is a set of hierarchical mean parameters, $I$ is a unit diagonal matrix and $\tau \geq 0$ is a scalar precision hyperparameter controlling how similar task parameters $\theta_d$ should be to the hierarchical mean parameters $\Theta$.
+We let $\Theta$ have a uniform prior (i.e. $P(\Theta) = 1$).
+
+The posterior distribution of the hierarchical model is then given by combining equation \ref{eq:lik} and \ref{eq:prior}:
+\begin{equation} \label{eq:posterior}
+    P(\theta_{1:D} | \mathcal{D}, \tau) \propto \prod_{d=1}^D \text{L}(\mathcal{D}_d | \theta_d) \cdot P(\theta_d | \Theta, \tau)
 \end{equation}
 %
 
-The prior of 
-
-\begin{equation}
-    P(\theta_{1:D}) = \prod_{d=1}^D N(\theta_d ; \Theta, \sigma I)
-\end{equation}
-%
-where $\Theta$ is a set of hierarchical parameters, $I$ is a unit diagonal matrix and $\sigma \leq 0$ is a scalar hyperparameter setting how similar task parameters $\theta_d$ should be the hierarchical parameters $\Theta$.
-
-\begin{itemize}
-    \item Typically one finetune each task separately, as written in \ref{eq:lik}.
-    \item If the D tasks are more similar to eachother than the pretraining corpus, the optimal parameters $\hat{\theta}_d$ should share some information during training in order to maximize their likelihood.
-\end{itemize}
-
+\subsection{Optimization}
+Given a precision hyperparameter, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ simultaneously.
 
 \section{Experimental setup}
-We choose the `opt-350m` base model and construct three tasks that it has likely not seem as they are in Norwegian:
-\begin{itemize}
-    \item A subset of Norwegian parliament speeches of politicians containing 1000 examples
-    \item A subset of a translation dataset from Norwegian bokmål to Norwegian Nynorsk (NbAiLab-nbnn-translation) containing 1000 examples
-    \item A subset of a translation dataset from Norwegian bokmål to Norwegian Nynorsk (NbAiLab-nbnn-translation) containing 200 examples
-\end{itemize}
+% Use the Talk of Norway Dataset consisting of speeches of Norwegian parliament politicians. We will consider different speakers of this dataset as different tasks, and see how the hierarchical model can benefit from sharing information between these tasks.
+
+% As base model, use opt-350m as it is predominantly trained on English, and only has seen a small amount of Norwegian data from the commoncrawls dataset.
+To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the model's perplexity on the test set for each task.
+
+
+We use the Talk of Norway Dataset \cite{lapponi_talk_2018}, which consists of speeches of Norwegian parliament politicians. Each speaker will come from different political parties and geographical areas, but the tasks will still share a common domain. Therefore, we can consider different speakers of this dataset as different tasks. Specifically, we select chronologically the 25 first speakers that have above 100 speeches in the dataset.
+This gives us a total of 25 tasks with samples ranging from 110 to 477 documents, and an average of 202 documents per task.
+The distibution of samples per task can be seen in Figure \ref{fig:task_len}.
+We split the training and test datasets randomly for each task in a 67/33 ratio.
+
+% add figure of the dataset distribution in file training_lengths.png
+\begin{figure}[h] \label{fig:task_len}
+    \centering
+    \includegraphics[width=\textwidth]{figures/training_lengths.png}
+    \caption{Number of training examples for each task}
+    \label{fig:training_lengths}
+\end{figure}
+
+We select a model that has been pretrained on a large and diverse dataset, but has not seen the specific tasks that we want to evaluate it on. We will use the `opt-350m` model \cite{zhang_opt_2022}, which is predominantly trained on English, and has only seen a small amount of Norwegian data from the CommonCrawls dataset.
+
+Adapting learning rate to the precision hyperparameter..
 
 \section{Results}
 
