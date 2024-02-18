@@ -26,7 +26,7 @@ class LightningHier(L.LightningModule):
         accumulate_grad_batches: int = 1,
         weight_decay:  float = 0.0,
         reg_weight: float = 0.0,
-        global_only: bool = False,
+        optim_type: bool = "joined_grad",
         *args, **kwargs
     ):
         """
@@ -43,7 +43,7 @@ class LightningHier(L.LightningModule):
         self.accumulate_grad_batches = accumulate_grad_batches
         self.weight_decay = weight_decay
         self.reg_weight = reg_weight
-        self.global_only = global_only
+        self.optim_type = optim_type
 
     def forward(self, input_ids, attention_mask, labels=None, *args, **kwargs):
         """ forward step """
@@ -93,11 +93,12 @@ class LightningHier(L.LightningModule):
                           if isinstance(val, torch.Tensor)}
 
             # Set adapter to relevant task except if global_only is True
-            if not self.global_only:
+            if self.optim_type == "global_only":
+                self.model.set_adapter("base_adapter") 
+            elif self.optim_type == "joined_grad":
+                self.model.set_adapter([task] + ["base_adapter"])
+            elif self.optim_type == "regularized":
                 self.model.set_adapter(task)
-            else:
-                self.model.set_adapter("base_adapter")
-
             output = self(
                 input_ids = batch_task['input_ids'], 
                 attention_mask = batch_task['attention_mask'], 
@@ -107,13 +108,16 @@ class LightningHier(L.LightningModule):
 
         ### hierarchical loss
         self.model.set_adapter(self.tasks + ["base_adapter"]) # Set all adapters to active again
-        
         l2_norms = self.compute_l2_norms_of_adapters()
+        
+        if self.optim_type == "regularized":
+            reg_loss = sum([val for key, val in l2_norms.items() if "l2_from_base" in key])
+        elif self.optim_type == "joined_grad":
+            reg_loss = sum([val for key, val in l2_norms.items() if ("l2/" in key) and (key != "l2/base")])
+
+        # log reg losses:
         if phase=="train":
             self.log_dict(l2_norms, on_epoch=False, sync_dist=True, on_step=True)
-
-        ## Compute total loss
-        reg_loss = sum([val for key, val in l2_norms.items() if "l2_from_base" in key])
         
         loss_loglik = sum([val*self.task_stats[task]['train_len'] for task, val in loss_loglik_dict.items()])
         if self.reg_weight>0:
@@ -122,7 +126,6 @@ class LightningHier(L.LightningModule):
             loss = loss_loglik
         ## LOGGING
         
-        #
         for key, val in loss_loglik_dict.items():
             logs[f"{phase}_all/loglik/{key}"] = -val
 
@@ -231,6 +234,9 @@ def load_model(params, tokenizer, task_stats, checkpoint_path=None):
         pl_model = LightningHier(tokenizer=tokenizer, model=model, task_stats=task_stats, **params)
     return pl_model
 def main(overwrite_params={}):
+    """
+    overwrite_params = {}
+    """
     params = {
         'model_name': "facebook/opt-350m",
         'max_token_length': 256,
@@ -238,7 +244,7 @@ def main(overwrite_params={}):
         'load_in_8bit' : False,
         'num_tasks' : 25,
         'reg_weight' : 10.1,
-        "global_only" : False,
+        "optim_type" : "joined_grad", # global_only, joined_grad , regularized
         # LORA PARAMETERS
         'lora_dim' : 16,
         'lora_alpha' : 16,
@@ -281,7 +287,7 @@ def main(overwrite_params={}):
     print(params)
     trainer = L.Trainer(
         callbacks=callbacks,
-        logger = L.pytorch.loggers.TensorBoardLogger("logs",name = f"1kepoch-reg:{params['reg_weight']}-lr:{params['learning_rate']}-global:{params['global_only']}-loradim:{params['lora_dim']}"),
+        logger = L.pytorch.loggers.TensorBoardLogger("logs",name = f"optim_type:{params['optim_type']}-reg:{params['reg_weight']}-lr:{params['learning_rate']}-loradim:{params['lora_dim']}"),
         max_epochs=params['max_epochs'],
         #strategy="ddp",
         devices=1, 
@@ -298,12 +304,12 @@ def main(overwrite_params={}):
                 val_dataloaders=dataloaders['valid'])
     
 if __name__ == "__main__":
-    main(overwrite_params={"reg_weight" : 0, "global_only" : True, "learning_rate" : 0.00001,'lora_dim' : 2,'lora_alpha' : 2})
+    #main(overwrite_params={"reg_weight" : 0, "global_only" : True, "learning_rate" : 0.00001,'lora_dim' : 2,'lora_alpha' : 2})
 
-    l1 = [0.1,1,5,10]
-    l2 = [1000,100,10]
+    l1 = [10, 100]
+    l2 = [1000, 1]
     for regloss in l1:
-        main(overwrite_params={"reg_weight" : regloss, "learning_rate" : regloss*0.00001,'lora_dim' : 2,'lora_alpha' : 2})
+        main(overwrite_params={"reg_weight" : regloss, "optim_type" : "joined_grad", "learning_rate" : 0.00001,'lora_dim' : 16,'lora_alpha' : 16})
     #main()
 #%% RUN FOR INTERACTIVE
 """
