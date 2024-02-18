@@ -316,13 +316,46 @@ def prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128, *args, **kwa
         ds[phase] = datasets.concatenate_datasets([d[phase] for d in dataset_dict.values()]).shuffle(seed=42)
         dataloaders[phase] = DataLoader(ds[phase], batch_size=batch_size, collate_fn=data_collate)
     return dataloaders
+
+def build_graph_for_training_lengths():
+        import matplotlib.pyplot as plt
+        """
+        # sample of task stats
+        task_stats = {'abid q raja': {'train_len': 169, 'val_len': 84, 'test_len': 85},
+        'akhtar chaudhry': {'train_len': 110, 'val_len': 54, 'test_len': 55},
+        'aksel hagen': {'train_len': 136, 'val_len': 68, 'test_len': 67},
+        'alf egil holmelid': {'train_len': 128, 'val_len': 64, 'test_len': 63},
+        'anders b werp': {'train_len': 145, 'val_len': 72, 'test_len': 73},
+        'andré n skjelstad': {'train_len': 172, 'val_len': 86, 'test_len': 86},
+        'andré oktay dahl': {'train_len': 244, 'val_len': 122, 'test_len': 122},
+        'anette trettebergstuen': {'train_len': 120, 'val_len': 60, 'test_len': 59},
+        # plot a histogram of the number of examples per task
+    
+        """
+        # Extract speaker names and training lengths
+        speakers = list(task_stats.keys())
+        train_lengths = [stats['train_len'] for stats in task_stats.values()]
+
+        # Create bar plot
+        plt.figure(figsize=(10, 6))
+        plt.bar(speakers, train_lengths, color='steelblue', edgecolor='black')
+        plt.xlabel('Speakers', fontsize=14)
+        plt.ylabel('Training Length', fontsize=14)
+        plt.title('Training Length for each Speaker', fontsize=16)
+        plt.xticks(rotation=90, fontsize=12)  # Rotate x-axis labels for better visibility
+        plt.yticks(fontsize=12)
+        plt.grid(True)
+
+        # Save the plot as a PNG file with a transparent background
+        plt.savefig('training_lengths.png', transparent=True, bbox_inches='tight')
+
+        plt.close()
 #%%
 if __name__ == "__main__":
     tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/opt-350m")
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    dataloaders, task_stats = prepare_talkofnorway_dataloaders(tokenizer, batch_size=4, max_token_len=512, num_tasks=3)
-    #dataloaders = prepare_dataloaders(tokenizer, batch_size=4, max_token_len=128)
-    
+    dataloaders, task_stats = prepare_talkofnorway_dataloaders(tokenizer, batch_size=64, max_token_len=256, num_tasks=25)
+    # build_graph_for_training_lengths()
     for batch in dataloaders['train']:
         print(batch['input_ids'].shape, batch['attention_mask'].shape, batch['labels'].shape)
         assert(batch['input_ids'].shape == batch['attention_mask'].shape == batch['labels'].shape)
