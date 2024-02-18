@@ -11,6 +11,7 @@ style=alphabetic,
 sorting=ynt
 ]{biblatex}
 \usepackage{amsmath}
+\usepackage{booktabs}
 \addbibresource{references.bib}
 
 \begin{document}
@@ -31,7 +32,7 @@ sorting=ynt
 \section{Method: Hierarchical LLM}
 
 \subsection{Task and Data Structure}
-We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task, our dataset comprises $N_d$ documents, with each document containing a sequence of $W_n$ tokens. This dataset structure is pivotal for our analysis and can be formally represented as:
+We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task, our dataset comprises $N_d$ documents, with each document containing a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
 
 \begin{equation} \label{eq:data}
 \mathcal{D} = \{ \{ w_{d,n,1:W_n} \}_{n=1}^{N_d} \}_{d=1}^D
@@ -79,15 +80,41 @@ We choose the `opt-350m` base model and construct three tasks that it has likely
     \item A subset of a translation dataset from Norwegian bokmål to Norwegian Nynorsk (NbAiLab-nbnn-translation) containing 200 examples
 \end{itemize}
 
+\section{Results}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/results_plot.png}
+    \caption{Plot of Regularization Constant vs Perplexity}
+    \label{fig:results_plot}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the validation set.}
+\label{tbl:results}
+\begin{tabular}{ccc}
+    \toprule
+    Learning Rate & Regularization & Validation Perplexity \\
+    \midrule
+        $10^{-4}$ &              0 &                 16.80 \\
+        $10^{-5}$ &       $10^{0}$ &                 16.59 \\
+        $10^{-4}$ &       $10^{1}$ &                 12.85 \\
+        $10^{-3}$ &       $10^{2}$ &                 \textbf{12.82} \\
+        $10^{-2}$ &       $10^{3}$ &                 13.26 \\
+        $10^{-1}$ &       $10^{4}$ &                 13.91 \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\end{document}
+
 These datasets will have a shared domain (Norwegian) that is different from what the pretrained foundational model is trained on.
 We use two tasks containing the same dataset distribution to see how sharing knowledge through the hierarchical prior can benefit datasets with few examples.
 
 
 \section{Conclusion}
-
-
-
-
 
 \section*{Background}
 Low-Rank  Adaption (LoRA) of an existing large-scale pre-trained Large Language Models (LLM) \cite{hu_lora_2021} has become a popular go-to approach when solving a specific text problem.
