@@ -306,11 +306,14 @@ def main(overwrite_params={}):
 if __name__ == "__main__":
     #main(overwrite_params={"reg_weight" : 0, "global_only" : True, "learning_rate" : 0.00001,'lora_dim' : 2,'lora_alpha' : 2})
 
-    l1 = [10, 100]
+    l1 = [0, 100]
     l2 = [1000, 1]
+    # joined grad configs
     for regloss in l1:
-        main(overwrite_params={"reg_weight" : regloss, "optim_type" : "joined_grad", "learning_rate" : 0.00001,'lora_dim' : 16,'lora_alpha' : 16})
-    #main()
+        overwrite_params={"reg_weight" : regloss, "optim_type" : "joined_grad", 'lora_dim' : 16,'lora_alpha' : 16}
+        if overwrite_params['optim_type']=="regularized":
+             overwrite_params["learning_rate"] = regloss*0.00001
+        main(overwrite_params)
 #%% RUN FOR INTERACTIVE
 """
 batch = next(iter(dataloaders['train']))
