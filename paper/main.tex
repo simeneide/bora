@@ -11,6 +11,8 @@ style=alphabetic,
 sorting=ynt
 ]{biblatex}
 \usepackage{amsmath}
+\usepackage{amssymb}
+\newcommand{\R}{\mathbb{R}}
 \usepackage{booktabs}
 \addbibresource{references.bib}
 
@@ -30,6 +32,10 @@ This paper presents a generalization of the LoRA fine-tuning method for multi-ta
 
 \section{Related works}
 
+\subsection{Multi-task Learning}
+Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate output layers for each task. Our paper focuses on a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
+
+
 \subsection{Low-Rank Adaption of Language Models}
 Low-Rank Adaption (LoRA)
 
@@ -42,7 +48,6 @@ Low-Rank Adaption (LoRA)
 
 \section{Method: Hierarchical LLM}
 
-
 \subsection{Task and Data Structure}
 We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task $d$, we have a dataset $\mathcal{D}_d$ containing $N_d$ documents, with each document consisting of a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
 
@@ -53,18 +58,28 @@ We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For eac
 In this notation, $w_{d,n,1:W_n}$ represents the token sequence in the $n^{th}$ document of the $d^{th}$ task. For simplification in subsequent discussions, we will omit the indices $d$ and $n$ when their reference is evident from the context.
 
 \subsection{Pretrained Autoregressive Language Model}
-Our foundational model is a pretrained autoregressive language model, denoted by its parameters $\theta_{full}$ and its architecture, referred to as $LLM$. The model's probability distribution is given by:
+Our foundational model is a pretrained autoregressive language model, denoted by its parameters $\theta_{full}$ and its architecture, referred to as a Large Language Model ($LLM$). The parameters $\theta_{full}$ has been obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$. The model's probability distribution is given by:
+The model's probability distribution is given by:
 
 \begin{equation} \label{eq:LLMprob}
 P(w_{1:W} | \theta_{full}) = \prod_{i=1}^{W-1} LLM(w_{i+1} | w_{1:i})
 \end{equation}
 %
-Here, $\theta_{full}$ represents the set of parameters obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$.
+where $LLM(w_{i+1} | w_{1:i})$ is the probability of the next token $w_{i+1}$ given the previous tokens $w_{1:i}$ in the document.
 We omit to write $\theta_{full}$ explicitly in the model, as the autoregressive language model always depend on these parameters.
 
+\subsection{Low-Rank Adaption (LoRA)}
+A Large Language Model contains many linear layers, and the LoRA method reduces the number of trainable parameters by reparameterizing the weight parameters ($W \in \R^{n_1 \times n_2}$) of these layers into the original pretrained weights $W_{full}$ and a low-rank decomposition $A$ and $B$ (\cite{hayou_lora_2024}):
+\begin{equation} \label{eq:LoRA}
+    W = W_{full} + \frac{\alpha}{r} BA 
+\end{equation}
+%
+where $W_{full} \in \R^{n_1 \times n_2}$ is the original pretrained weight, $B \in \R^{n_1 \times r}$ and $A \in \R^{r \times n_2}$ are the low-rank factors, $r \ll \text{min}(n_1, n_2)$ is the low rank dimension and $\alpha$ is a scaling hyperparameter.
+
+During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned as normal parameters, while the original pretrained weights $W_{full}$ are kept fixed.
+
 \subsection{The Hierarchical LoRA model}
-For each task $d$ we have a LORA parameter set $\theta_d$ that is used to fine-tune to that task.
-Hence, the likelihood of our problem follows from combining equation \ref{eq:data} and \ref{eq:LLMprob}:
+In the hierarchical LoRA model, we introduce a LoRA parameter set for each task $d$, denoted as $\theta_d$, containing all the low-rank decomposition matricies $A$ and $B$ from each decomposed layer in the Large Language Model. The likelihood of the data $\mathcal{D}$ given the task parameters $\theta_{1:D}$ is then given by (combining equation \ref{eq:data} and \ref{eq:LLMprob}):
 \begin{equation} \label{eq:lik}
     \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d)
 \end{equation}
