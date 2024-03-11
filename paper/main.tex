@@ -35,16 +35,10 @@ This paper presents a generalization of the LoRA fine-tuning method for multi-ta
 \subsection{Multi-task Learning}
 Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate output layers for each task. Our paper focuses on a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
 
+\subsection{Finetuning methods}
+Talk about alternative finetuning methods to lora: finetune top layer (traditional), 
 
-\subsection{Low-Rank Adaption of Language Models}
-Low-Rank Adaption (LoRA)
-
-[This might be background?]
-\begin{itemize}
-    \item explain what pretraining LLM means
-    \item Explain how LORA fine tuned is done on each task
-    \item Explain how LORA finetuned also could be done on all tasks together if they have a similar data distribution.
-\end{itemize}
+sira (\cite{zhu_sira_2023})
 
 \section{Method: Hierarchical LLM}
 
@@ -76,7 +70,7 @@ A Large Language Model contains many linear layers, and the LoRA method reduces 
 %
 where $W_{full} \in \R^{n_1 \times n_2}$ is the original pretrained weight, $B \in \R^{n_1 \times r}$ and $A \in \R^{r \times n_2}$ are the low-rank factors, $r \ll \text{min}(n_1, n_2)$ is the low rank dimension and $\alpha$ is a scaling hyperparameter.
 
-During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned as normal parameters, while the original pretrained weights $W_{full}$ are kept fixed.
+During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned from data as normal parameter matricies, while the original pretrained weights $W_{full}$ are kept fixed.
 
 \subsection{The Hierarchical LoRA model}
 In the hierarchical LoRA model, we introduce a LoRA parameter set for each task $d$, denoted as $\theta_d$, containing all the low-rank decomposition matricies $A$ and $B$ from each decomposed layer in the Large Language Model. The likelihood of the data $\mathcal{D}$ given the task parameters $\theta_{1:D}$ is then given by (combining equation \ref{eq:data} and \ref{eq:LLMprob}):
@@ -98,6 +92,7 @@ The posterior distribution of the hierarchical model is then given by combining 
     P(\theta_{1:D} | \mathcal{D}, \tau) \propto \prod_{d=1}^D \text{L}(\mathcal{D}_d | \theta_d) \cdot P(\theta_d | \Theta, \tau)
 \end{equation}
 %
+
 
 \subsection{Optimization}
 Given a precision hyperparameter, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ simultaneously.
@@ -162,9 +157,6 @@ Adapting learning rate to the precision hyperparameter..
 \end{figure}
 
 %\end{document}
-
-These datasets will have a shared domain (Norwegian) that is different from what the pretrained foundational model is trained on.
-We use two tasks containing the same dataset distribution to see how sharing knowledge through the hierarchical prior can benefit datasets with few examples.
 
 
 \section{Conclusion}
