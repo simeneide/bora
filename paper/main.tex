@@ -1,7 +1,7 @@
 \documentclass{article}
 \usepackage{graphicx} % Required for inserting images
 
-\title{Hierarchical Large Language Models for Multi-task problems}
+\title{HLoRA: Hierarchical Large Language Models for Multi-task problems}
 \author{simen }
 \date{November 2023}
 
@@ -14,7 +14,7 @@ sorting=ynt
 \usepackage{amssymb}
 \newcommand{\R}{\mathbb{R}}
 \usepackage{booktabs}
-\addbibresource{references.bib}
+\addbibresource{My Library.bib}
 
 \begin{document}
 
@@ -36,11 +36,13 @@ This paper presents a generalization of the LoRA fine-tuning method for multi-ta
 Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate output layers for each task. Our paper focuses on a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
 
 \subsection{Finetuning methods}
-Talk about alternative finetuning methods to lora: finetune top layer (traditional), 
+A popular approach to finetuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g. \cite{yosinski2014transferable}). These techniques observe that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. This approach has been widely adopted in neural networks. However, we focus on the LoRA method, which allows us to train a low rank decomposition of the entire network.
 
-sira (\cite{zhu_sira_2023})
+There are several variations of the LoRA algorithm. The Sparse Mixture of Low Rank Adapters (SIRA) \cite{zhu_sira_2023}, for instance, creates a Mixture of Expert on the low-rank parameters. Another variation, the Weight Decomposed Low-Rank Adaption (DoRA) \cite{hayou_lora_2024}, decomposes the low-rank parameters into scale and unit norm direction parameters. There's also the Efficient Low Rank Adaption (LoRA+) \cite{hayou_lora_2024}, which improves the existing LoRA optimization algorithm by adjusting the learning rate of the low-rank parameters.
+All these methods are designed to improve the performance of the LoRA algorithm, and can be used in conjunction with the Hierarchical LoRA method.
 
 \section{Method: Hierarchical LLM}
+This section describes the Hierarchical LoRA method for multi-task problems. We start by defining the task and data structure, and then introduce the pretrained autoregressive language model. We then describe the LoRA method, and finally present our Hierarchical LoRA model.
 
 \subsection{Task and Data Structure}
 We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task $d$, we have a dataset $\mathcal{D}_d$ containing $N_d$ documents, with each document consisting of a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
@@ -93,9 +95,13 @@ The posterior distribution of the hierarchical model is then given by combining 
 \end{equation}
 %
 
-
 \subsection{Optimization}
-Given a precision hyperparameter, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ simultaneously.
+Given a precision hyperparameter, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. 
+We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ simultaneously optimizing the likelihood and the prior in equation \ref{eq:posterior}.
+This implies that the task parameters with have gradients both towards minimizing the convential LLM loss and the hierarchical mean parameters. The hierarchical mean parameters $\Theta$ will have gradients towards the average of the task parameters, and learn to represent the global structure of the tasks after the task parameters have been partly optimized.
+
+An important observation is that the gradient of the prior term in equation \ref{eq:posterior} is proportional to the precision hyperparameter $\tau$. This means that the optimization will more steps to converge for larger values of $\tau$, as the task parameters will be more constrained towards the hierarchical mean parameters.
+Therefore, we adjust the learning rate of the AdamW optimizer to be proportional to the precision hyperparameter $\tau$, and we find in informal tests that this cause the optimizations to converge at a similar rate for different values of $\tau$.
 
 \section{Experimental setup}
 % Use the Talk of Norway Dataset consisting of speeches of Norwegian parliament politicians. We will consider different speakers of this dataset as different tasks, and see how the hierarchical model can benefit from sharing information between these tasks.
@@ -107,7 +113,7 @@ To test our method, we optimize the model with a range of different precision hy
 We use the Talk of Norway Dataset \cite{lapponi_talk_2018}, which consists of speeches of Norwegian parliament politicians. Each speaker will come from different political parties and geographical areas, but the tasks will still share a common domain. Therefore, we can consider different speakers of this dataset as different tasks. Specifically, we select chronologically the 25 first speakers that have above 100 speeches in the dataset.
 This gives us a total of 25 tasks with samples ranging from 110 to 477 documents, and an average of 202 documents per task.
 The distibution of samples per task can be seen in Figure \ref{fig:task_len}.
-We split the training and test datasets randomly for each task in a 67/33 ratio.
+We leave 33\% of the data for the test set.
 
 % add figure of the dataset distribution in file training_lengths.png
 \begin{figure}[h] \label{fig:task_len}
@@ -122,6 +128,8 @@ We select a model that has been pretrained on a large and diverse dataset, but h
 Adapting learning rate to the precision hyperparameter..
 
 \section{Results}
+The results of the hierarchical LoRA model on the Talk of Norway Dataset are shown in Table \ref{tbl:results} and Figure \ref{fig:results_plot}. We see that the model achieves the best validation perplexity of 12.82 when using a learning rate of $10^{-3}$ and a regularization constant of $10^{2}$.
+This indicates that the model benefits from sharing information between the tasks, and that the global prior helps to improve the performance of the individual task parameters.
 
 \begin{figure}[h]
     \centering
@@ -132,7 +140,7 @@ Adapting learning rate to the precision hyperparameter..
 
 \begin{table}[h]
 \centering
-\caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the validation set.}
+\caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
 \label{tbl:results}
 \begin{tabular}{ccc}
     \toprule
@@ -149,6 +157,11 @@ Adapting learning rate to the precision hyperparameter..
 \end{table}
 
 \section{Discussion}
+
+% Discuss overall result
+% Fetch perplexity for each task and discuss how it improves results significantly for some tasks (less data?), and less larger data tasks.
+% Give some advice on how to use this method in practice.
+
 \begin{figure}[h]
     \centering
     \includegraphics[width=\textwidth]{figures/weights_vs_data_lengths.png}
