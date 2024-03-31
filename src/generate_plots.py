@@ -70,11 +70,17 @@ def get_perplexity_for_all_tasks(main_results):
 #%% ### ###
 ### Precompute values
 ### ### ###
-main_results = pd.read_csv("main_results.csv")
+main_results = pd.read_csv("figures/main_results.csv")
 df_task_perplexity, df = get_perplexity_for_all_tasks(main_results)
 dataset_sizes = build_dataset_of_dataset_sizes()
 tasks = df_task_perplexity['task'].unique()
-sns.set_theme(style='ticks', rc={'figure.figsize':(11.7,8.27)})
+
+cm=1/2.54
+sns.set_theme(
+    style='ticks', 
+    rc={'figure.figsize':(2*8.5*cm, 8.5*cm), 
+    'font.size': 8.5, 'axes.titlesize': 8, 'axes.labelsize': 8, 'xtick.labelsize': 8, 'ytick.labelsize': 8}
+    )
 
 #%% ### ###
 ### Generate latex table with main result
@@ -83,14 +89,58 @@ sns.set_theme(style='ticks', rc={'figure.figsize':(11.7,8.27)})
 df_main_results = pd.DataFrame(main_results)
 
 # Define formatters
+min_val_perplexity = df_main_results['validation perplexity'].min()
+
 formatters = {
-    'Learning Rate': lambda x: '$10^{{{}}}$'.format(int(np.log10(x))) if x != 0 else '0',
-    'Regularization': lambda x: '$10^{{{}}}$'.format(int(np.log10(x))) if x != 0 else '0',
-    'Validation Perplexity': '{:.2f}'.format
+    'lr': lambda x: '$10^{{{}}}$'.format(int(np.log10(x))) if x != 0 else '0',
+    'tau': lambda x: '$10^{{{}}}$'.format(int(np.log10(x))) if x != 0 else '0',
+    'validation perplexity': lambda x: '\\textbf{{{:.2f}}}'.format(x) if x == min_val_perplexity else '{:.2f}'.format(x)
 }
+# remove experiment_id
+df_main_results = df_main_results.drop(columns=['experiment_id'])
+
 
 # Print DataFrame as LaTeX table with formatters
 print(df_main_results.to_latex(index=False, formatters=formatters, escape=False))
+# SOME MANUAL ADJUSTMENT MADE TO TABLE!
+
+#%%
+task_specific_perplexity = df.copy()
+# drop columns: lr, validation perplexity, experiment_id
+task_specific_perplexity = task_specific_perplexity.drop(columns=['lr','validation perplexity','experiment_id'])
+# Set first column to tau
+task_specific_perplexity = task_specific_perplexity.set_index('tau')
+
+# set tau to bold
+#task_specific_perplexity.index = task_specific_perplexity.index.map(lambda x: f'\\textbf{{{x}}}')
+# dont have tau as index but as row
+#task_specific_perplexity = task_specific_perplexity.reset_index()
+task_specific_perplexity = task_specific_perplexity.transpose()
+# set index name
+task_specific_perplexity.index.name = 'Task'
+
+task_specific_perplexity = task_specific_perplexity.round(2)
+
+def highlight_col_100(val, bold=False):
+    return f'\\textbf{{{val:.2f}}}' if bold else f'{val:.2f}'
+
+formatters = {column: (lambda x: highlight_col_100(x, bold=True)) if column == 100 else (lambda x: highlight_col_100(x, bold=False)) for column in task_specific_perplexity.columns}
+
+print(task_specific_perplexity.to_latex(escape=False, formatters=formatters))
+
+#print(task_specific_perplexity.to_latex(escape=False))
+#%%
+
+# Create a formatter for each column
+def make_formatter(column):
+    min_val = task_specific_perplexity[column].min()
+    return lambda x: f'\\textbf{{{x:.2f}}}' if float(x) == min_val else f'{x:.2f}'
+
+# Create a formatter for each numeric column
+formatters = {column: make_formatter(column) for column in task_specific_perplexity.columns if task_specific_perplexity[column].dtype != 'object'}
+
+# Print DataFrame as LaTeX table with formatters
+print(task_specific_perplexity.to_latex(escape=False, index=False, formatters=formatters,column_format='c|' + 'c'* (len(task_specific_perplexity.columns)-1)))
 
 #%% ### ###
 ###  Plot training data length vs perplexity for the optimal model
@@ -107,8 +157,20 @@ plt.xlabel('Training data length')
 plt.ylabel('Perplexity')
 plt.title('Training data length vs Perplexity')
 plt.grid(True)
-plt.savefig('figures/trainingsize_vs_perplexity.png', bbox_inches='tight', dpi=300, transparent=True)
+plt.savefig('../paper/figures/trainingsize_vs_perplexity.png', bbox_inches='tight', dpi=300, transparent=True)
 # result: no big change here
+
+#%% ### ###
+### Plot bar plot of dataset sizes across tasks
+### ### ###
+dataset_sizes.plot(x='task', y='dataset_size', kind='bar')
+plt.xlabel('Task')
+plt.ylabel('Training data size')
+plt.grid(True)
+# dont add legend:
+plt.legend().set_visible(False)
+
+plt.savefig('../paper/figures/training_lengths.png', bbox_inches='tight', dpi=300, transparent=True)
 
 #%% ### ###  
 # Plot relative improvement of using hierarchical model vs separate models. compare with data size
@@ -120,8 +182,8 @@ separate_model = df_task_perplexity[df_task_perplexity['experiment_id'] == "1kep
 
 one_model = df_task_perplexity[df_task_perplexity['experiment_id'] == "1kepoch-reg:10000-lr:0.1-global:False-loradim:16/version_0"].sort_values("task")
 
-improvement_separate = 1-best_model['val_perplexity']/separate_model['val_perplexity']
-improvement_one = 1-best_model['val_perplexity']/one_model['val_perplexity']
+improvement_separate = (1-best_model['val_perplexity']/separate_model['val_perplexity'])*100
+improvement_one = (1-best_model['val_perplexity']/one_model['val_perplexity'])*100
 
 task_size_vs_improvement = pd.DataFrame({
     'task': best_model['task'], 
@@ -131,34 +193,62 @@ task_size_vs_improvement = pd.DataFrame({
 
 task_size_vs_improvement.plot(x='dataset_size', y='improvement_separate', kind='scatter')
 plt.xlabel('Training data length')
-plt.ylabel('Relative improvement from separate models')
+plt.ylabel('Rel Improvement Perplexity from separate models [%]')
 #plt.title('Training data length vs Relative improvement from separate models')
-plt.savefig('figures/relative_improvement_separate_models.png', bbox_inches='tight', dpi=300, transparent=True)
+plt.grid(True)
+plt.savefig('../paper/figures/relative_improvement_separate_models.png', bbox_inches='tight', dpi=300, transparent=True)
 
 task_size_vs_improvement.plot(x='dataset_size', y='improvement_one', kind='scatter')
-plt.xlabel('Training data length')
-plt.ylabel('Relative improvement from one model')
-#plt.title('Training data length vs Relative improvement from one model')
-plt.savefig('figures/relative_improvement_one_model.png', bbox_inches='tight', dpi=300, transparent=True)
+plt.xlabel('Training data size')
+plt.ylabel('Rel Improvement Perplexity from one model [%]')
+plt.grid(True)
+plt.savefig('../paper/figures/relative_improvement_one_model.png', bbox_inches='tight', dpi=300, transparent=True)
+
 #%% ### ###
-# PLOT REGULARIZATION VS PERPLEXITY FOR ALL TASKS
+# Plot relative improvement, but both on the same plot
+# Do this by merging the datasets and plotting them with different color and scatter markers
+### ### ###
+
+# Plot improvement_separate
+plt.scatter(task_size_vs_improvement['dataset_size'], task_size_vs_improvement['improvement_separate'], 
+            color='b', marker='o', label='Improvement from separate models ($\\tau=0$)')
+
+# Plot improvement_one
+plt.scatter(task_size_vs_improvement['dataset_size'], task_size_vs_improvement['improvement_one'], 
+            color='r', marker='x', label='Improvement from one model ($\\tau=10000$)')
+
+plt.xlabel('Training data size')
+plt.ylabel('Rel Improvement Perplexity [%]')
+plt.grid(True)
+plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2), fancybox=True, shadow=False, ncol=2)
+#plt.legend(loc='upper right')
+
+plt.savefig('../paper/figures/relative_improvement_combined.png', bbox_inches='tight', dpi=300, transparent=True)
+
+#%% ### ###
+# PLOT PRECISION VS PERPLEXITY FOR ALL TASKS
 ### ### ###
 
 for task in tasks:
-    plt.plot(df["regularization"], df[task], label=task, alpha=0.5, color="grey")
+    plt.plot(df["tau"], df[task], label=task, alpha=0.8, color="grey")
 
 # Create the plot
-plt.plot(df['regularization'], df['validation perplexity'], marker='o', label='Validation Perplexity', color="black", linewidth=2.5)
+plt.plot(df['tau'], df['validation perplexity'], marker='o', label='Validation Perplexity', color="black", linewidth=2.5)
+
 # Add labels and title
-plt.xlabel('Regularization Constant (symlog scale)', fontsize=14)
-plt.ylabel('Perplexity', fontsize=14)
+plt.xlabel('Precision parameter $\\tau$ (symlog scale)')
+plt.ylabel('Perplexity')
 # add horizontal line
 
 # Set x-axis to symlog scale
 plt.xscale('symlog')
 
+#plt.axhline(y=df['validation perplexity'].min(), 
+            #xmax=10e4,xmin=0.0,
+#            color='black', linestyle='--', alpha=1)
+
 # Add gridlines
 plt.grid(True)
-plt.savefig('figures/results_plot.png', bbox_inches='tight', dpi=300, transparent=True)
+plt.savefig('../paper/figures/results_plot.png', bbox_inches='tight', dpi=300, transparent=True)
 # Add legend
 #%%
