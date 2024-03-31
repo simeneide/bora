@@ -1,0 +1,7 @@
+lr,tau,validation perplexity,experiment_id
+0.0001,0,16.8,1kepoch-reg:0-lr:0.0001-global:False/version_0
+1.00E-05,1,16.59,1kepoch-reg:1-lr:1e-05-global:False/version_0
+1.00E-04,10,12.85,1kepoch-reg:10-lr:0.0001-global:False/version_1
+1.00E-03,100,12.82,1kepoch-reg:100-lr:0.001-global:False/version_0
+0.01,1000,13.26,1kepoch-reg:1000-lr:0.01-global:False/version_0
+0.1,10000,13.91,1kepoch-reg:10000-lr:0.1-global:False-loradim:16/version_0
