@@ -2,7 +2,7 @@
 \usepackage{graphicx} % Required for inserting images
 \usepackage{authblk}
 
-\title{HLoRA: Hierarchical Low-Rank Adaption for Multi-task Large Language Models}
+\title{HLoRA: Hierarchical Bayesian Low-Rank Adaption for Multi-task Large Language Models}
 \author[1]{Simen Eide}
 \author[2]{Arnoldo Frigessi}
 \affil[1]{University of Oslo, Schibsted}
@@ -23,21 +23,21 @@ sorting=ynt
 \begin{document}
 
 \maketitle
-\abstract{Lorem Ipsum}
+\abstract{Lorem Ipsum; also remember to write about the learning rate $\tau$}
 
 \section{Introduction}
-Large Language Models (LLM) have become a popular model architechture for solving a wide range of text problems. LLMs are typically pretrained on a large and diverse dataset, and then fine-tuned on a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by up to 10'000 times and the GPU memory requirement by 3 times, while still outperforming other fine-tuning techniques (\cite{hu_lora_2021}).
+Large Language Models (LLM) have become a popular model for solving a wide range of generative text problems. LLMs are typically pretrained on a large and diverse dataset of texts, and then fine-tuned on a new data set of texts, dedicated to a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by a factor of up to 10'000 and the GPU memory requirement by a factor of 3, while still outperforming other fine-tuning techniques (\cite{hu_lora_2021}).
 
-When applying fine-tuning of LLMs to problems, the practitioner often wants to solve multiple similar tasks at the same time. 
-For instance, a news organization might want to use an LLM to generate various textual elements for a given article such as headlines, keywords, and summaries, all based on the main body of the text. This would involve fine-tuning the model for each of these distinct but related tasks.
-Similarly, a customer service chatbot might need to be fine-tuned to handle inquiries across a range of topics, such as product information, order status, and troubleshooting. Additionally, the chatbot might need to adapt its responses based on the user's tone or the formality of the conversation, requiring further fine-tuning.
-In a more creative context, a scriptwriting AI might be fine-tuned to generate dialogues for different characters in a movie, each with their unique style and vocabulary. This would involve fine-tuning the model for each character, a set of related but distinct tasks.
+When performing fine-tuning of LLMs, the practitioner often wants to solve multiple similar tasks at the same time: 
+A media organization might want to use an LLM to generate various textual elements to generate headlines, keywords, and summaries for a given news article. 
+A website might have multiple chatbot tasks answering questions to their users handling inquiries across a range of topics such as product information, order status, and troubleshooting.
+And finally, a scriptwriting AI might want to generate dialogues for different characters in a movie, each with their unique style and vocabulary.
 
-In these cases, the practitioner can either (1) train one model for each task separately, or (2) train one model for all tasks and condition the specific output wanted (e.g \cite{Raffel2019}).
-There is a trade-off between these two approaches: Train each task separately and the model will be able to specialize on each task, but it may suffer from limited data for each task. Train one model for all tasks, and the model will be able to share information between tasks, but it may not be able to specialize on each task due to limited model capacity.
+In these multi-task cases, the practitioner can either (1) train one model for each task and dataset separately, or (2) train one model for all tasks and condition the specific output wanted (e.g \cite{Raffel2019}).
+There is a trade-off between these two approaches: Train each task separately and the model will be able to specialize on each task, but it may suffer from limited data available for each task. Train one model for all tasks, and the model will be able to share information between tasks, but it may not be able to specialize on each task due to limited model capacity.
 
-This paper suggests a way to circumvent these trade-offs and presents a generalization of the two LoRA fine-tuning methods for multi-task problems, which we call Hierarchical Low-Rank Adaption method (HLoRA).
-The Hierarchical LoRA method allows tasks to share information between each other through sharing a set of global hierarchical prior parameters. 
+In this paper we suggest a way to circumvent these trade-offs and presents a generalization of the two LoRA fine-tuning methods for multi-task problems, which we call Hierarchical Low-Rank Adaption method (HLoRA).
+The Hierarchical LoRA method allows tasks to share information between each other through sharing a set of global hierarchical prior parameters, in a Bayesian hierarchical setting. 
 This means that tasks with little data can benefit from the global structure of the related tasks, while tasks with more data can specialize on their specific task.
 We show in Section \ref{sec:hlora} that HLoRA can be seen as a generalization of the two approaches above.
 
@@ -54,13 +54,13 @@ The paper is organized as follows: Section \ref{sec:related_works} presents rela
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \subsection{Multi-task Learning}
-Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate output layers for each task. Our paper focuses on a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
+Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate parameters for the last (or last few) layers for each task. Our paper suggests a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
 
 \subsection{Finetuning methods}
-A popular approach to finetuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g. \cite{yosinski2014transferable}). These techniques observe that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. This approach has been widely adopted in neural networks. However, we focus on the LoRA method, which allows us to train a low rank decomposition of the entire network.
+A popular approach to finetuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g. \cite{yosinski2014transferable}). These techniques observe that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. This approach has been widely adopted in neural networks. However, in this paper we focus on the LoRA method, which instead allows us to train a low rank decomposition of the entire network.
 
-There are several variations of the LoRA algorithm. The Sparse Mixture of Low Rank Adapters (SIRA) \cite{zhu_sira_2023}, for instance, creates a Mixture of Expert on the low-rank parameters. Another variation, the Weight Decomposed Low-Rank Adaption (DoRA) \cite{hayou_lora_2024}, decomposes the low-rank parameters into scale and unit norm direction parameters. There's also the Efficient Low Rank Adaption (LoRA+) \cite{hayou_lora_2024}, which improves the existing LoRA optimization algorithm by adjusting the learning rate of the low-rank parameters.
-All these methods are designed to improve the performance of the LoRA algorithm, and can be used in conjunction with the Hierarchical LoRA method.
+There are several variations of the LoRA algorithm. The Sparse Mixture of Low Rank Adapters (SIRA) \cite{zhu_sira_2023}, for instance, creates a Mixture of Expert on the low-rank parameters. Another variation, the Weight Decomposed Low-Rank Adaption (DoRA) \cite{hayou_lora_2024}, decomposes the low-rank parameters into scale and unit norm direction parameters. There is also the Efficient Low Rank Adaption (LoRA+) \cite{hayou_lora_2024}, which improves the existing LoRA optimization algorithm by adjusting the learning rate of the low-rank parameters.
+All these methods are designed to improve the performance of the LoRA algorithm, and can be used in conjunction with the proposed Hierarchical LoRA method.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Method: Hierarchical LLM} \label{sec:method}
@@ -68,7 +68,7 @@ All these methods are designed to improve the performance of the LoRA algorithm,
 This section describes the Hierarchical LoRA method for multi-task problems. We start by defining the task and data structure, and then introduce the pretrained autoregressive language model. We then describe the LoRA method, and finally present our Hierarchical LoRA model.
 
 \subsection{Task and Data Structure}
-We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task $d$, we have a dataset $\mathcal{D}_d$ containing $N_d$ documents, with each document consisting of a sequence of $W_n$ tokens. This dataset structure can be formally represented as:
+We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For each task $d$, we have a dataset $\mathcal{D}_d$ containing $N_d$ documents, with each document consisting of a sequence of $W_n$ tokens, $n=1,..., N_d$. This dataset structure can be formally represented as:
 
 \begin{equation} \label{eq:data}
 \mathcal{D} = \{ \mathcal{D}_d \}_{d=1}^D  =  \{ \{ w_{d,n,1:W_n} \}_{n=1}^{N_d} \}_{d=1}^D
@@ -77,7 +77,7 @@ We define our study across $D$ distinct tasks, denoted as $d=1,2,...,D$. For eac
 In this notation, $w_{d,n,1:W_n}$ represents the token sequence in the $n^{th}$ document of the $d^{th}$ task. For simplification in subsequent discussions, we will omit the indices $d$ and $n$ when their reference is evident from the context.
 
 \subsection{Pretrained Autoregressive Language Model}
-Our foundational model is a pretrained autoregressive language model, denoted by its parameters $\theta_{full}$ and its architecture, referred to as a Large Language Model ($LLM$). The parameters $\theta_{full}$ has been obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$. The model's probability distribution is given by:
+Our foundational model is a pretrained autoregressive language model, denoted by its parameters $\theta_{full}$ and its architecture, referred to as a Large Language Model ($LLM$). The parameters $\theta_{full}$ has been obtained from pretraining on a large and diverse dataset, distinct from our current dataset $\mathcal{D}$. 
 The model's probability distribution is given by:
 
 \begin{equation} \label{eq:LLMprob}
@@ -85,32 +85,39 @@ P(w_{1:W} | \theta_{full}) = \prod_{i=1}^{W-1} LLM(w_{i+1} | w_{1:i})
 \end{equation}
 %
 where $LLM(w_{i+1} | w_{1:i})$ is the probability of the next token $w_{i+1}$ given the previous tokens $w_{1:i}$ in the document.
-We omit to write $\theta_{full}$ explicitly in the model, as the autoregressive language model always depend on these parameters.
+We omit to write $\theta_{full}$ explicitly in the LLM, as the autoregressive language model always depend on these parameters.
 
 \subsection{Low-Rank Adaption (LoRA)}
-A Large Language Model contains many linear layers, and the LoRA method reduces the number of trainable parameters by reparameterizing the weight parameters ($W \in \R^{n_1 \times n_2}$) of these layers into the original pretrained weights $W_{full}$ and a low-rank decomposition $A$ and $B$ (\cite{hayou_lora_2024}):
+A Large Language Model contains many linear layers, and the LoRA method reduces the number of trainable parameters by reparameterizing the weight parameters ($W \in \R^{n_1 \times n_2}$, $W \subset \theta$) of these layers into the original pretrained weights $W_{full}$ and a low-rank decomposition $A$ and $B$ (\cite{hayou_lora_2024}):
 \begin{equation} \label{eq:LoRA}
     W = W_{full} + \frac{\alpha}{r} BA 
 \end{equation}
 %
-where $W_{full} \in \R^{n_1 \times n_2}$ is the original pretrained weight, $B \in \R^{n_1 \times r}$ and $A \in \R^{r \times n_2}$ are the low-rank factors, $r \ll \text{min}(n_1, n_2)$ is the low rank dimension and $\alpha$ is a scaling hyperparameter.
+where 
+$W_{full} \in \R^{n_1 \times n_2}$ is the original pretrained weight, 
+$B \in \R^{n_1 \times r}$ and $A \in \R^{r \times n_2}$ are the low-rank factors, 
+$n_1$, $n_2$ are the input and output dimension of the original weight matrix in the linear layer,
+$r \ll \text{min}(n_1, n_2)$ is the low rank dimension 
+and $\alpha$ is a scaling hyperparameter.
 
-During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned from data as normal parameter matricies, while the original pretrained weights $W_{full}$ are kept fixed.
+During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned (estimated) from data, while the original pretrained weights $W_{full}$ are kept fixed to their pretrained value.
 
 \subsection{The Hierarchical LoRA model} \label{sec:hlora}
-In the hierarchical LoRA model, we introduce a LoRA parameter set for each task $d$, denoted as $\theta_d$, containing all the low-rank decomposition matricies $A$ and $B$ from each decomposed layer in the Large Language Model. The likelihood of the data $\mathcal{D}$ given the task parameters $\theta_{1:D}$ is then given by (combining equation \ref{eq:data} and \ref{eq:LLMprob}):
+In the hierarchical LoRA model, we introduce a LoRA parameter set for each task $d$, denoted as $\theta_d$, containing all the low-rank decomposition matricies $A_d$ and $B_d$ from each decomposed layer in the Large Language Model. The likelihood of the data $\mathcal{D}$ given the task parameters $\theta_{1:D}$ is then given by (combining equation \ref{eq:data} and \ref{eq:LLMprob}):
 \begin{equation} \label{eq:lik}
-    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d)
+    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d).
 \end{equation}
 %
 %
-Each task will share some information with each other, and we model this by introducing a Gaussian hierarchical prior over the task parameters $\theta_{1:D}$, given by
+Tasks will share some knowledge with each other, and we model this by introducing a Gaussian hierarchical prior over the task parameters $\theta_{1:D}$, given by
 \begin{equation} \label{eq:prior}
     P(\theta_{1:D} | \Theta, \tau ) = \prod_{d=1}^D N(\theta_d ; \Theta, \frac{1}{\tau} I)
 \end{equation}
 %
-where $\Theta$ is a set of hierarchical mean parameters, $I$ is a unit diagonal matrix and $\tau \geq 0$ is a scalar precision hyperparameter controlling how similar task parameters $\theta_d$ should be to the hierarchical mean parameters $\Theta$.
-We let $\Theta$ have a uniform prior (i.e. $P(\Theta) = 1$).
+where $\Theta$ is a set of hierarchical mean parameters, $I$ is a unit diagonal matrix and $\tau \geq 0$ is a scalar precision hyperparameter controlling how similar the task parameters $\theta_d$ should be to the hierarchical mean parameters $\Theta$.
+We let $\Theta$ have a uniform hyperprior (i.e. $P(\Theta) = 1$). The prior assumes that the task parameters share the common origin from the shared Gaussian prior, because the tasks are related: input data come from similar distributions and the output tasks has similar aspects. 
+The precision hyperparameter $\tau$ controls how much the task parameters $\theta_d$ are a priori expected to be allowed to deviate from the hierarchical mean parameters $\Theta$. 
+This is essentially a measure for how much structure and information the tasks share with each other, and should be set by the practitioner based on her's prior knowledge.
 
 The posterior distribution of the hierarchical model is then given by combining equation \ref{eq:lik} and \ref{eq:prior}:
 \begin{equation} \label{eq:posterior}
@@ -118,21 +125,19 @@ The posterior distribution of the hierarchical model is then given by combining 
 \end{equation}
 %
 %
-The precision hyperparameter $\tau$ controls how much the task parameters $\theta_d$ should be allowed to deviate from the hierarchical mean parameters $\Theta$. 
-This is essentially a proxy for how much structure and information the tasks share with each other, and should be set by the practitioner based on her's prior knowledge.
 
 The resulting HLoRA model balances each task based on its data size and similarity to the other tasks: If a task has few data points, the posterior in equation \ref{eq:posterior} will be dominated by the prior term and the task parameters will be close to the global hierarchical parameters and borrow information and structure from these. On the other hand, if a task has a lot of data points, the likelihood will dominate the posterior and the task parameters will be allowed to learn more about the specific task and rely less on the hierarchical parameters.
 
 The hierarchical LoRA model can be seen as a generalization of the two conventional approaches for multi-task problems:
-If we let $\tau$ go to zero, the probability distributyion of the prior (eq. \ref{eq:prior}) will become a flat uniform prior and the problem will be equivalent to training each task independently. On the other hand, if we let $\tau$ go to infinity, the prior will become a strong constraint on the task parameters not allowing them to deviate from the global parameters, and the problem will be equivalent to training one model for all tasks.
+If we let $\tau$ go to zero, the probability distribution of the prior (eq. \ref{eq:prior}) will become a flat uniform prior and the problem will be equivalent to training each task independently. On the other hand, if we let $\tau$ go to infinity, the prior will become a strong constraint on the task parameters not allowing them to deviate from the global parameters, and the problem will be equivalent to training one model for all tasks.
 
 \subsection{Optimization}
-Given a precision hyperparameter, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. 
-We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ simultaneously optimizing the likelihood and the prior in equation \ref{eq:posterior}.
-This implies that the task parameters with have gradients both towards minimizing the convential LLM loss and the hierarchical mean parameters. The hierarchical mean parameters $\Theta$ will have gradients towards the average of the task parameters, and learn to represent the global structure of the tasks after the task parameters have been partly optimized.
+Given a precision hyperparameter $\tau$, we want to find the maximum a posteriori (MAP) estimate of the hierarchical model. 
+We will do this by using AdamW (\cite{adamW}), a gradient-based optimization algorithm, optimizing over the task parameters $\theta_{1:D}$ and the hierarchical mean parameters $\Theta$ using the posterior in equation \ref{eq:posterior}.
+This implies that the task parameters with have gradients both towards minimizing the convential LLM loss (represented by the likelihood term) and the hierarchical mean parameters (originating from the prior). The hierarchical mean parameters $\Theta$ will have gradients towards the average of the task parameters, and learn to represent the global structure of the tasks.
 
-An important observation is that the gradient of the prior term in equation \ref{eq:posterior} is proportional to the precision hyperparameter $\tau$. This means that the optimization will more steps to converge for larger values of $\tau$, as the task parameters will be more constrained towards the hierarchical mean parameters.
-Therefore, we adjust the learning rate of the AdamW optimizer to be proportional to the precision hyperparameter $\tau$, and we find in informal tests that this cause the optimizations to converge at a similar rate for different values of $\tau$.
+An important observation is that the gradient of the prior term in equation \ref{eq:posterior} is proportional to the precision hyperparameter $\tau$. This means that the optimization will need more steps to converge for larger values of $\tau$, as the task parameters will be more constrained towards the hierarchical mean parameters, and a posteriori dependent on each other.
+Therefore, we adjust the learning rate of the AdamW optimizer to be proportional to the precision hyperparameter $\tau$, and we find in our experiments that this causes the optimizations to converge at a similar rate for different values of $\tau$.
 
 \section{Experimental setup}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -145,9 +150,9 @@ Therefore, we adjust the learning rate of the AdamW optimizer to be proportional
     \label{fig:training_lengths}
 \end{figure}
 % As base model, use opt-350m as it is predominantly trained on English, and only has seen a small amount of Norwegian data from the commoncrawls dataset.
-To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the model's perplexity on the test set for each task.
+To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the models' perplexity on the test set for each task.
 We use the Talk of Norway Dataset \cite{lapponi_talk_2018}, which consists of speeches of Norwegian parliament politicians. Each speaker will come from different political parties and geographical areas, but the tasks will still share a common domain. Therefore, we can consider different speakers of this dataset as different tasks. Specifically, we select chronologically the 25 first speakers that have above 100 speeches in the dataset.
-This gives us a total of 25 tasks with samples ranging from 110 to 477 documents, and an average of 202 documents per task.
+This gives us a total of 25 tasks with samples ranging from 110 to 477 documents, and an average of 202 documents per task. For some speakers we have significantly less data as for others. 
 The distibution of samples per task can be seen in Figure \ref{fig:task_len}.
 We leave 33\% of the data for the test set.
 
@@ -157,7 +162,7 @@ We select a model that has been pretrained on a large and diverse dataset, but h
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The overall results of the hierarchical LoRA model on the Talk of Norway Dataset are shown in Table \ref{tbl:results} and Figure \ref{fig:results_plot}. We see that the model achieves the best test perplexity of 12.82 when using a precision parameter of $100$. The improvement is largest from training the models independently ($\tau = 0$), and smaller when comparing to the limiting case when all task specific model parameters are constraint to be equal ($\tau=10000$).
 
-\begin{table}[h] \label{tbl:results}
+\begin{table}[h] 
     \centering
     \begin{tabular}{ccc}
         \toprule
@@ -172,6 +177,7 @@ The overall results of the hierarchical LoRA model on the Talk of Norway Dataset
         \bottomrule
         \end{tabular}
         \caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
+        \label{tbl:results}
     \end{table}
 
 \begin{figure}[ht]
@@ -199,8 +205,15 @@ Our results in Figure \ref{fig:results_plot} show that the hierarchical LoRA mod
 
 We observe in Figure \ref{fig:weights_vs_datalen} that the distance between the task parameters and the global prior increases with increasing task dataset size. This is as expected in a hierarchical model, as tasks with more data will have a larger likelihood term in the posterior and will be allowed to specialize more on their specific task during training.
 
-We find no relationship between dataset size and the final perplexity (Figure \ref{fig:absolute_improvement}). One could expect that tasks with more data are able to learn more about their specific task and achieve a lower perplexity, but this is not the case in our experiments. There are many other factors that can influence the final perplexity, and we believe that this is the reason in our case.
+We find no relationship between dataset size and the final perplexity (Figure \ref{fig:absolute_improvement}). One could expect that tasks with more data are able to learn more about their specific task and achieve a lower perplexity, but this is not the case in our experiments. There are many other task specific factors such as under-represented dialects and political views that can influence the final perplexity. Controlling for these factors is difficult and out of scope for this paper, but we believe that these factors may be the reason for this negative result.
+
 However, when considering the relative improvement of the best performing model, the results in Figure \ref{fig:relative_improvement} show tasks with less data may benefit more than the tasks with more data. Although a weak signal, this is an expected result, as the hierarchical model allows tasks with little data to borrow information and structure from the global model, while tasks with more data can specialize on their specific task.
+
+It is in principle possible to avoid the MAP maximisation, and instead take a fully Bayesian approach, which would need to rely on some form of MCMC.
+However, MCMC methods
+and in this sense might not scale. One advantage is the possibility to estimate $\tau$, and integrate over its empirical posterior distribution obtained within the MCMC. We have studied the effect of $tau$ in the test data. One can also cross-validate $tau$ in the training data. This would also be computationally too heavy. However, one could devise a way of subsampling the domain training data; for example, one could use only a few domains with large training data and few with little data, and run a rapid cross-validation for $tau$, the result of which would be used further. 
+
+Another important discovery is the usefulness to let $tau$ determine the learning rate. The intiuition is clear and the effect potent. 
 
 \begin{figure}
     \centering
@@ -231,6 +244,7 @@ Future work:
     \item Investigate the capacity of the global model
     \item Investigate with varying capacity
     \item Compute the full posterior and see if it can be used to explore better in text generation
+    \item Prove that the optimal learning rate is indeed determined by $\tau$. 
 \end{itemize}
 
 
