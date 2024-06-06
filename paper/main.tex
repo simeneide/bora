@@ -1,21 +1,37 @@
-\documentclass{article}
+%\documentclass{article}
+\documentclass[fullpaper]{nldl}
+\paperID{42}
+\vol{V}
 \usepackage{graphicx} % Required for inserting images
 \usepackage{authblk}
 
-\title{HLoRA: Hierarchical Bayesian Low-Rank Adaption for Multi-task Large Language Models}
+\title{BoRA: Hierarchical Bayesian Low-Rank Adaption for Multi-task Large Language Models}
 \author[1]{Simen Eide}
 \author[2]{Arnoldo Frigessi}
 \affil[1]{University of Oslo, Schibsted}
 \affil[1]{University of Oslo}
 \date{March 2024}
 
-\usepackage[backend=biber,style=alphabetic,sorting=ynt]{biblatex}
+%\usepackage{biblatex} % [backend=biber,style=alphabetic,sorting=ynt] %not necessary when using template
 \addbibresource{My Library.bib}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \newcommand{\R}{\mathbb{R}}
 \usepackage{booktabs}
-\addbibresource{My Library.bib}
+%PACKAGES FROM TEMPLATE THAT SEEMS NECESSARY
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{listings}
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines,
+}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+%%% END OF PACKAGES FROM TEMPLATE
+
 
 \begin{document}
 
@@ -142,7 +158,7 @@ This implies that the task parameters with have gradients both towards minimizin
 An important observation is that the gradient of the prior term in equation \ref{eq:posterior} is proportional to the precision hyperparameter $\tau$. This means that the optimization will need more steps to converge for larger values of $\tau$, as the task parameters will be more constrained towards the hierarchical mean parameters, and a posteriori dependent on each other.
 Therefore, we adjust the learning rate of the AdamW optimizer to be proportional to the precision hyperparameter $\tau$, and we find in our experiments that this causes the optimizations to converge at a similar rate for different values of $\tau$.
 
-\section{Experimental setup}
+\section{Experimental setup} \label{sec:experimental_setup}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Use the Talk of Norway Dataset consisting of speeches of Norwegian parliament politicians. We will consider different speakers of this dataset as different tasks, and see how the hierarchical model can benefit from sharing information between these tasks.
 % add figure of the dataset distribution in file training_lengths.png
@@ -167,33 +183,31 @@ We leave 33\% of the data for the test set.
 
 We select a model that has been pretrained on a large and diverse dataset, but has not seen the specific tasks that we want to evaluate it on. We will use the `opt-350m' model~\cite{zhang_opt_2022}, which is predominantly trained on English, and has only seen a small amount of Norwegian data from the CommonCrawls dataset.
 
-\section{Results}
+\section{Results} \label{sec:results}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The overall results of the hierarchical LoRA model on the Talk of Norway Dataset are shown in Table \ref{tbl:results} and Figure \ref{fig:results_plot}. We see that the model achieves the best test perplexity of 12.82 when using a precision parameter of $100$. The improvement is largest from training the models independently ($\tau = 0$), and smaller when comparing to the limiting case when all task specific model parameters are constraint to be equal ($\tau=10000$).
 
-\begin{lstlisting}[gobble=2]
-    \begin{table}[h] 
-        \centering
-        \resizebox{\linewidth}{!}{%
-            \begin{tabular}{ccc}
-                \toprule
-                Learning Rate & Precision ($\tau$) & Test Perplexity \\
-                \midrule
-                    $10^{-4}$ &              0 &                 16.80 \\
-                    $10^{-5}$ &       $10^{0}$ &                 16.59 \\
-                    $10^{-4}$ &       $10^{1}$ &                 12.85 \\
-                    $10^{-3}$ &       $10^{2}$ &                 \textbf{12.82} \\
-                    $10^{-2}$ &       $10^{3}$ &                 13.26 \\
-                    $10^{-1}$ &       $10^{4}$ &                 13.91 \\
-                \bottomrule
-                \end{tabular}
-        }
-            \caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
-            \label{tbl:results}
-        \end{table}
-\end{lstlisting}
+\begin{table}[h] 
+    \centering
+    \resizebox{\linewidth}{!}{%
+        \begin{tabular}{ccc}
+            \toprule
+            Learning Rate & Precision ($\tau$) & Test Perplexity \\
+            \midrule
+                $10^{-4}$ &              0 &                 16.80 \\
+                $10^{-5}$ &       $10^{0}$ &                 16.59 \\
+                $10^{-4}$ &       $10^{1}$ &                 12.85 \\
+                $10^{-3}$ &       $10^{2}$ &                 \textbf{12.82} \\
+                $10^{-2}$ &       $10^{3}$ &                 13.26 \\
+                $10^{-1}$ &       $10^{4}$ &                 13.91 \\
+            \bottomrule
+            \end{tabular}
+    }
+        \caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
+        \label{tbl:results}
+    \end{table}
 
-\begin{figure}%[ht]
+\begin{figure}[ht]
     %\centering
     \resizebox{\linewidth}{!}{%
     \includegraphics{figures/results_plot.png}
@@ -216,7 +230,7 @@ A precision parameter of $100$ gives the best perplexity for all our tasks.
     \label{fig:relative_improvement}
 \end{figure}
 
-\section{Discussion}
+\section{Discussion} \label{sec:discussion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Our results in Figure \ref{fig:results_plot} show that the hierarchical LoRA model can improve the test perplexity for all tasks compared to both training the models independently and training one model for all tasks. This confirms our hypothesis that BoRA can be a useful method for multi-task problems, and that it can mitigate the trade-off between training each task separately and training one model for all tasks.
 It is interesting to note the BoRA also helps for the tasks with relatively more data.
@@ -267,9 +281,10 @@ Future work includes investigating the effect that BoRA has on more tasks and da
 \section{Task specific test perplexities}
 Table \ref{tbl:task_perplexities} shows the test perplexities for each task when using the hierarchical LoRA model with different precision hyperparameters $\tau$.
 
-\begin{table}[ht] \label{tbl:task_perplexities}
+\begin{table}[ht] 
     \centering
     \caption{Test perplexity for each task and precision hyperparameter $\tau$}
+    \label{tbl:task_perplexities}
     \resizebox{\linewidth}{!}{%
     \begin{tabular}{lrrrrrr}
         \toprule
