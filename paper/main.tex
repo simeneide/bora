@@ -13,7 +13,7 @@
 \date{March 2024}
 
 %\usepackage{biblatex} % [backend=biber,style=alphabetic,sorting=ynt] %not necessary when using template
-\addbibresource{My Library.bib}
+\addbibresource{references.bib}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \newcommand{\R}{\mathbb{R}}
@@ -42,7 +42,7 @@ BoRA addresses these trade-offs by leveraging a Bayesian hierarchical model that
 }
 
 \section{Introduction}
-Large Language Models (LLM) have become a popular model for solving a wide range of generative text problems. LLMs are typically pretrained on a large and diverse dataset of texts, and then fine-tuned on a new data set of texts, dedicated to a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by a factor of up to 10'000 and the GPU memory requirement by a factor of 3, while still outperforming other finetuning techniques (\cite{hu_lora_2021}).
+Large Language Models (LLM) have become a popular model for solving a wide range of generative text problems. LLMs are typically pretrained on a large and diverse dataset of texts, and then fine-tuned on a new data set of texts, dedicated to a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by a factor of up to 10'000 and the GPU memory requirement by a factor of 3, while still outperforming other finetuning techniques (\cite{hu_lora_2022}).
 
 When performing fine-tuning of LLMs, the practitioner often wants to solve multiple similar tasks at the same time: 
 A media organization might want to use an LLM to generate various textual elements to generate headlines, keywords, and summaries for a given news article. 
@@ -70,10 +70,10 @@ The paper is organized as follows: Section \ref{sec:related_works} presents rela
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \subsection{Multi-task Learning}
-Multi-task Learning \cite{caruana_multitask_nodate} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate parameters for the last (or last few) layers for each task. Our paper suggests a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
+Multi-task Learning \cite{caruana_multitask_1997} is a popular machine learning approach for training one model on multiple tasks. A common approach is to share the lower layers of a neural network between tasks, and have separate parameters for the last (or last few) layers for each task. Our paper suggests a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
 
 \subsection{Finetuning methods}
-A popular approach to finetuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g. \cite{yosinski2014transferable}). These techniques observe that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. This approach has been widely adopted in neural networks. However, in this paper we focus on the LoRA method, which instead allows us to train a low rank decomposition of the entire network.
+A popular approach to finetuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g. \cite{yosinski_how_2014}). These techniques observe that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. This approach has been widely adopted in neural networks. However, in this paper we focus on the LoRA method, which instead allows us to train a low rank decomposition of the entire network.
 
 There are several variations of the LoRA algorithm. The Sparse Mixture of Low Rank Adapters (SIRA) \cite{zhu_sira_2023}, for instance, creates a Mixture of Expert on the low-rank parameters. Another variation, the Weight Decomposed Low-Rank Adaption (DoRA) \cite{hayou_lora_2024}, decomposes the low-rank parameters into scale and unit norm direction parameters. There is also the Efficient Low Rank Adaption (LoRA+) \cite{hayou_lora_2024}, which improves the existing LoRA optimization algorithm by adjusting the learning rate of the low-rank parameters.
 All these methods are designed to improve the performance of the LoRA algorithm, and can be used in conjunction with the proposed Hierarchical LoRA method.
@@ -162,13 +162,14 @@ Therefore, we adjust the learning rate of the AdamW optimizer to be proportional
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Use the Talk of Norway Dataset consisting of speeches of Norwegian parliament politicians. We will consider different speakers of this dataset as different tasks, and see how the hierarchical model can benefit from sharing information between these tasks.
 % add figure of the dataset distribution in file training_lengths.png
-\begin{figure} \label{fig:task_len}
+\begin{figure} 
+    
     \centering
     \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/training_lengths.png}
     }
     \caption{Number of training examples for each task}
-\label{fig:training_lengths}
+    \label{fig:task_len}
 \end{figure}
 % As base model, use opt-350m as it is predominantly trained on English, and only has seen a small amount of Norwegian data from the commoncrawls dataset.
 To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the models' Perplexity on the test set for each task.
@@ -187,7 +188,7 @@ We select a model that has been pretrained on a large and diverse dataset, but h
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The overall results of the hierarchical LoRA model on the Talk of Norway Dataset are shown in Table \ref{tbl:results} and Figure \ref{fig:results_plot}. We see that the model achieves the best test perplexity of 12.82 when using a precision parameter of $100$. The improvement is largest from training the models independently ($\tau = 0$), and smaller when comparing to the limiting case when all task specific model parameters are constraint to be equal ($\tau=10000$).
 
-\begin{table}[h] 
+\begin{table}[ht] 
     \centering
     \resizebox{\linewidth}{!}{%
         \begin{tabular}{ccc}
@@ -220,7 +221,7 @@ If we consider each task separately (Table \ref{tbl:task_perplexities}), we see 
 Figure \ref{fig:relative_improvement} shows the relative improvement of each task when using the hierarchical model compared to the two cases versus their training data size. There is an indication that the improvement from training separately is larger for tasks with less data, and we do not see this for the "one model" case.
 A precision parameter of $100$ gives the best perplexity for all our tasks.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/relative_improvement_combined.png}
@@ -261,7 +262,7 @@ We leave these questions for future work.
 % Fetch perplexity for each task and discuss how it improves results significantly for some tasks (less data?), and less larger data tasks.
 % Give some advice on how to use this method in practice.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/weights_vs_data_lengths.png}
