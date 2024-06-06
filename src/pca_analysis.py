@@ -30,7 +30,7 @@ params = {
 tokenizer = load_tokenizer(params)
 dataloaders, task_stats = data_utils.prepare_talkofnorway_dataloaders(tokenizer, **params)
 
-pl_model = load_model(params, task_stats=task_stats, tokenizer=tokenizer, checkpoint_path="/home/simen.eide@schibsted.com/hier-llm/src/logs_regularized/1kepoch-reg:10-lr:0.0001-global:False/version_1/checkpoints/epoch=281-step=22560.ckpt")
+pl_model = load_model(params, task_stats=task_stats, tokenizer=tokenizer, checkpoint_path="/home/simen.eide@schibsted.com/hier-llm/src/logs/1kepoch-reg:10-lr:0.0001-global:False/version_1/checkpoints/epoch=281-step=22560.ckpt")
 
 model = pl_model.model
 #%% concat all adapter weights from different tasks
@@ -70,7 +70,12 @@ import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-sns.set_theme()
+cm=1/2.54
+sns.set_theme(
+    style='ticks', 
+    rc={'figure.figsize':(2*8.5*cm, 8.5*cm), 
+    'font.size': 8.5, 'axes.titlesize': 8, 'axes.labelsize': 8, 'xtick.labelsize': 8, 'ytick.labelsize': 8}
+    )
 # Create a new figure and set its size
 fig, ax = plt.subplots(figsize=(10, 8))
 # Create a scatter plot
@@ -88,8 +93,8 @@ ax.tick_params(axis='both', which='major', labelsize=10)
 plt.grid(True)
 
 # Remove the top and right spines
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
+#ax.spines['right'].set_visible(False)
+#ax.spines['top'].set_visible(False)
 
 # Save the plot with a transparent background
 plt.savefig('weights_vs_data_lengths.png', bbox_inches='tight', dpi=300, transparent=True)
