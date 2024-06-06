@@ -104,9 +104,12 @@ During LoRA fine-tuning, the low-rank factors $A$ and $B$ are learned (estimated
 
 \subsection{The Hierarchical Bayesian LoRA model} \label{sec:BoRA}
 In the hierarchical LoRA model, we introduce a LoRA parameter set for each task $d$, denoted as $\theta_d$, containing all the low-rank decomposition matricies $A_d$ and $B_d$ from each decomposed layer in the Large Language Model. The likelihood of the data $\mathcal{D}$ given the task parameters $\theta_{1:D}$ is then given by (combining equation \ref{eq:data} and \ref{eq:LLMprob}):
-\begin{equation} \label{eq:lik}
-    \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) = \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d).
-\end{equation}
+
+
+\begin{align}  \label{eq:lik}
+    & \text{L}(\mathcal{D} | \theta_1, \theta_2, \ldots, \theta_D) = \prod_{d=1}^D L(\mathcal{D}_d | \theta_d) \nonumber \\
+    &= \prod_{d=1}^D \prod_{n=1}^{N_d} \prod_{i=1}^{W_n-1} \text{LLM}(w_{d,n,i+1} | w_{d,n,1:i}; \theta_d).
+\end{align}
 %
 %
 Tasks will share some knowledge with each other, and we model this by introducing a Gaussian hierarchical prior over the task parameters $\theta_{1:D}$, given by
@@ -143,11 +146,13 @@ Therefore, we adjust the learning rate of the AdamW optimizer to be proportional
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Use the Talk of Norway Dataset consisting of speeches of Norwegian parliament politicians. We will consider different speakers of this dataset as different tasks, and see how the hierarchical model can benefit from sharing information between these tasks.
 % add figure of the dataset distribution in file training_lengths.png
-\begin{figure}[h] \label{fig:task_len}
+\begin{figure} \label{fig:task_len}
     \centering
+    \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/training_lengths.png}
+    }
     \caption{Number of training examples for each task}
-   \label{fig:training_lengths}
+\label{fig:training_lengths}
 \end{figure}
 % As base model, use opt-350m as it is predominantly trained on English, and only has seen a small amount of Norwegian data from the commoncrawls dataset.
 To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the models' Perplexity on the test set for each task.
@@ -166,27 +171,33 @@ We select a model that has been pretrained on a large and diverse dataset, but h
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The overall results of the hierarchical LoRA model on the Talk of Norway Dataset are shown in Table \ref{tbl:results} and Figure \ref{fig:results_plot}. We see that the model achieves the best test perplexity of 12.82 when using a precision parameter of $100$. The improvement is largest from training the models independently ($\tau = 0$), and smaller when comparing to the limiting case when all task specific model parameters are constraint to be equal ($\tau=10000$).
 
-\begin{table}[h] 
-    \centering
-    \begin{tabular}{ccc}
-        \toprule
-        Learning Rate & Precision ($\tau$) & Test Perplexity \\
-        \midrule
-            $10^{-4}$ &              0 &                 16.80 \\
-            $10^{-5}$ &       $10^{0}$ &                 16.59 \\
-            $10^{-4}$ &       $10^{1}$ &                 12.85 \\
-            $10^{-3}$ &       $10^{2}$ &                 \textbf{12.82} \\
-            $10^{-2}$ &       $10^{3}$ &                 13.26 \\
-            $10^{-1}$ &       $10^{4}$ &                 13.91 \\
-        \bottomrule
-        \end{tabular}
-        \caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
-        \label{tbl:results}
-    \end{table}
+\begin{lstlisting}[gobble=2]
+    \begin{table}[h] 
+        \centering
+        \resizebox{\linewidth}{!}{%
+            \begin{tabular}{ccc}
+                \toprule
+                Learning Rate & Precision ($\tau$) & Test Perplexity \\
+                \midrule
+                    $10^{-4}$ &              0 &                 16.80 \\
+                    $10^{-5}$ &       $10^{0}$ &                 16.59 \\
+                    $10^{-4}$ &       $10^{1}$ &                 12.85 \\
+                    $10^{-3}$ &       $10^{2}$ &                 \textbf{12.82} \\
+                    $10^{-2}$ &       $10^{3}$ &                 13.26 \\
+                    $10^{-1}$ &       $10^{4}$ &                 13.91 \\
+                \bottomrule
+                \end{tabular}
+        }
+            \caption{Empirical results of the hierarchical LORA finetuned on the three tasks. The perplexity is calculated on the test set.}
+            \label{tbl:results}
+        \end{table}
+\end{lstlisting}
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=\textwidth]{figures/results_plot.png}
+\begin{figure}%[ht]
+    %\centering
+    \resizebox{\linewidth}{!}{%
+    \includegraphics{figures/results_plot.png}
+    }
     \caption{Plot of Precision vs Perplexity. The thick black line is the overall test perplexity over all tasks, and the thinner grey lines are the test perplexity for each individual task.}
     \label{fig:results_plot}
 \end{figure}
@@ -197,7 +208,9 @@ A precision parameter of $100$ gives the best perplexity for all our tasks.
 
 \begin{figure}[h]
     \centering
+    \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/relative_improvement_combined.png}
+    }
     \caption{Task dataset size versus the relative improvement in perplexity of the best performing hierarchical model ($\tau = 100$) compared to the case when all models are trained independently ($\tau = 0$) in blue, and compared to the limiting case when all task specific model parameters are constraint to be equal ($\tau=10000$) in red. 
     The figure shows that all tasks benefit from sharing parameters with the global model, and indicates that the tasks with less data benefit more than the tasks with more data.}
     \label{fig:relative_improvement}
@@ -223,7 +236,9 @@ We leave these questions for future work.
 
 \begin{figure}
     \centering
+    \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/trainingsize_vs_perplexity.png}
+    }
     \caption{Training size vs perplexity of the best performing hierarchical model ($\tau = 100$). The figure shows that there is no strong relationship between dataset size and final perplexity.}
     \label{fig:absolute_improvement}
 \end{figure}
@@ -234,7 +249,9 @@ We leave these questions for future work.
 
 \begin{figure}[h]
     \centering
+    \resizebox{\linewidth}{!}{%
     \includegraphics[width=\textwidth]{figures/weights_vs_data_lengths.png}
+    }
     \caption{The figure shows the L2-distance between each task's adapter weight and the global prior on the y-axis, and the number of training examples on the x-axis. We see that, as expected, tasks with more training data will have a larger distance to the global prior.}
     \label{fig:weights_vs_datalen} 
 \end{figure}
@@ -253,6 +270,7 @@ Table \ref{tbl:task_perplexities} shows the test perplexities for each task when
 \begin{table}[ht] \label{tbl:task_perplexities}
     \centering
     \caption{Test perplexity for each task and precision hyperparameter $\tau$}
+    \resizebox{\linewidth}{!}{%
     \begin{tabular}{lrrrrrr}
         \toprule
         tau & 0     & 1     & 10    &          100   & 1000  & 10000 \\
@@ -285,6 +303,7 @@ Table \ref{tbl:task_perplexities} shows the test perplexities for each task when
         borghild tenden        & 14.42 & 14.84 & 12.12 & \textbf{11.10} & 11.68 & 12.41 \\
         \bottomrule
     \end{tabular}
+    }
 \end{table}
 
 
