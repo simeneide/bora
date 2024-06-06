@@ -23,10 +23,13 @@ sorting=ynt
 \begin{document}
 
 \maketitle
-\abstract{Lorem Ipsum; also remember to write about the learning rate $\tau$}
+\abstract{This paper introduces Bayesian Hierarchical Low-Rank Adaption (BH-LoRA), a novel method for finetuning multi-task Large Language Models (LLMs). Current finetuning approaches, such as Low-Rank Adaption (LoRA), perform exeptionally well in reducing training parameters and memory usage but face limitations when applied to multiple similar tasks. Practitioners usually have to choose between training separate models for each task or a single model for all tasks, both of which come with trade-offs in specialization and data utilization.
+
+HLoRA addresses these trade-offs by leveraging a Bayesian hierarchical model that allows tasks to share information through global hierarchical prior parameters. This enables tasks with limited data to benefit from the overall structure derived from related tasks while allowing tasks with more data to specialize. We demonstrate the effectiveness of HLoRA on the next token generation task using the Talk of Norway Dataset, where each parliament representative's speeches represent distinct tasks. Our experimental results show that HLoRA outperforms both traditional individual and unified model approaches, achieving lower perplexity and better generalization across tasks. This method provides a scalable and efficient solution for multi-task LLM finetuning, with significant practical implications for diverse applications such as media content generation, chatbot responses, and scriptwriting.
+}
 
 \section{Introduction}
-Large Language Models (LLM) have become a popular model for solving a wide range of generative text problems. LLMs are typically pretrained on a large and diverse dataset of texts, and then fine-tuned on a new data set of texts, dedicated to a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by a factor of up to 10'000 and the GPU memory requirement by a factor of 3, while still outperforming other fine-tuning techniques (\cite{hu_lora_2021}).
+Large Language Models (LLM) have become a popular model for solving a wide range of generative text problems. LLMs are typically pretrained on a large and diverse dataset of texts, and then fine-tuned on a new data set of texts, dedicated to a specific task. The fine-tuning process is often done by maximizing the next token log likelihood of the task-specific dataset, and the resulting model is then used to make predictions and generations on new data. A popular fine-tuning method is Low-Rank Adaption (LoRA), which reduces the number of trainable parameters by a factor of up to 10'000 and the GPU memory requirement by a factor of 3, while still outperforming other finetuning techniques (\cite{hu_lora_2021}).
 
 When performing fine-tuning of LLMs, the practitioner often wants to solve multiple similar tasks at the same time: 
 A media organization might want to use an LLM to generate various textual elements to generate headlines, keywords, and summaries for a given news article. 
@@ -147,16 +150,20 @@ Therefore, we adjust the learning rate of the AdamW optimizer to be proportional
     \centering
     \includegraphics[width=\textwidth]{figures/training_lengths.png}
     \caption{Number of training examples for each task}
-    \label{fig:training_lengths}
+   \label{fig:training_lengths}
 \end{figure}
 % As base model, use opt-350m as it is predominantly trained on English, and only has seen a small amount of Norwegian data from the commoncrawls dataset.
-To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the models' perplexity on the test set for each task.
-We use the Talk of Norway Dataset \cite{lapponi_talk_2018}, which consists of speeches of Norwegian parliament politicians. Each speaker will come from different political parties and geographical areas, but the tasks will still share a common domain. Therefore, we can consider different speakers of this dataset as different tasks. Specifically, we select chronologically the 25 first speakers that have above 100 speeches in the dataset.
+To test our method, we optimize the model with a range of different precision hyperparameters $\tau$, and evaluate the models' Perplexity on the test set for each task.
+% DEF PERPLEXITY
+Perplexity is defined as the exponentiated average negative log-likelihood per token, and is a common metric for evaluating language models. A lower perplexity indicates a better model.
+We use the Talk of Norway Dataset~\cite{lapponi_talk_2018}, which consists of speeches of Norwegian parliament politicians.
+Each speaker will come from different political parties and geographical areas, but the tasks will still share a common domain. 
+Therefore, we can consider different speakers of this dataset as different tasks. Specifically, we select chronologically the 25 first speakers that have above 100 speeches in the dataset.
 This gives us a total of 25 tasks with samples ranging from 110 to 477 documents, and an average of 202 documents per task. For some speakers we have significantly less data as for others. 
-The distibution of samples per task can be seen in Figure \ref{fig:task_len}.
+The distibution of samples per task can be seen in Figure~\ref{fig:task_len}.
 We leave 33\% of the data for the test set.
 
-We select a model that has been pretrained on a large and diverse dataset, but has not seen the specific tasks that we want to evaluate it on. We will use the `opt-350m` model \cite{zhang_opt_2022}, which is predominantly trained on English, and has only seen a small amount of Norwegian data from the CommonCrawls dataset.
+We select a model that has been pretrained on a large and diverse dataset, but has not seen the specific tasks that we want to evaluate it on. We will use the `opt-350m' model~\cite{zhang_opt_2022}, which is predominantly trained on English, and has only seen a small amount of Norwegian data from the CommonCrawls dataset.
 
 \section{Results}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -202,6 +209,7 @@ A precision parameter of $100$ gives the best perplexity for all our tasks.
 \section{Discussion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Our results in Figure \ref{fig:results_plot} show that the hierarchical LoRA model can improve the test perplexity for all tasks compared to both training the models independently and training one model for all tasks. This confirms our hypothesis that HLoRA can be a useful method for multi-task problems, and that it can mitigate the trade-off between training each task separately and training one model for all tasks.
+It is interesting to note the HLoRA also helps for the tasks with relatively more data.
 
 We observe in Figure \ref{fig:weights_vs_datalen} that the distance between the task parameters and the global prior increases with increasing task dataset size. This is as expected in a hierarchical model, as tasks with more data will have a larger likelihood term in the posterior and will be allowed to specialize more on their specific task during training.
 
@@ -209,11 +217,12 @@ We find no relationship between dataset size and the final perplexity (Figure \r
 
 However, when considering the relative improvement of the best performing model, the results in Figure \ref{fig:relative_improvement} show tasks with less data may benefit more than the tasks with more data. Although a weak signal, this is an expected result, as the hierarchical model allows tasks with little data to borrow information and structure from the global model, while tasks with more data can specialize on their specific task.
 
-It is in principle possible to avoid the MAP maximisation, and instead take a fully Bayesian approach, which would need to rely on some form of MCMC.
-However, MCMC methods
-and in this sense might not scale. One advantage is the possibility to estimate $\tau$, and integrate over its empirical posterior distribution obtained within the MCMC. We have studied the effect of $tau$ in the test data. One can also cross-validate $tau$ in the training data. This would also be computationally too heavy. However, one could devise a way of subsampling the domain training data; for example, one could use only a few domains with large training data and few with little data, and run a rapid cross-validation for $tau$, the result of which would be used further. 
-
-Another important discovery is the usefulness to let $tau$ determine the learning rate. The intiuition is clear and the effect potent. 
+%% MCMC vs MAP
+In principle, one could bypass the Maximum a Posteriori maximization and adopt a fully Bayesian approach which would tell us how much we can trust the hierarchical model. Such an approach  would require the use of Markov Chain Monte Carlo, Variational Inference or other methods.
+This would allow us to sample from the posterior distribution of the hierarchical model, and obtain uncertainty estimates for the task parameters.
+However, MCMC methods are computationally heavy, and it is not clear to us how to best sample from the posterior distribution of the language model in an efficient and scalable way.
+A middle ground between a full bayesian approach and the MAP estimate is to be bayesian in a few parameters. For instance, instead of our approach where we maximize the likelihood of the validation set with respect to the precision parameter $\tau$, one could be bayesian and integrate over its empirical posterior distribution obtained within the MCMC. This would give us an estimate of how well the tasks share information with each other in the specific problem.
+We leave these questions for future work.
 
 \begin{figure}
     \centering
@@ -235,18 +244,8 @@ Another important discovery is the usefulness to let $tau$ determine the learnin
 
 \section{Conclusion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-This paper presented a generalization of the LoRA fine-tuning method for multi-task problems, which we call the Hierarchical LoRA method. The hierarchical model allows tasks to share information between each other through a set of global hierarchical prior parameters, and can be seen as a generalization of the two conventional approaches for multi-task problems. We showed that the Hierarchical LoRA model can improve the test perplexity for all tasks compared to both training the models independently and training one model for all tasks, and that it can mitigate the trade-off between the two approaches.
-
-
-Future work:
-\begin{itemize}
-    \item Investigate the effect of the hierarchical model on more tasks and datasets
-    \item Investigate the capacity of the global model
-    \item Investigate with varying capacity
-    \item Compute the full posterior and see if it can be used to explore better in text generation
-    \item Prove that the optimal learning rate is indeed determined by $\tau$. 
-\end{itemize}
-
+This paper presented a generalization of the LoRA fine-tuning method for multi-task problems, which we call the Hierarchical LoRA method. The hierarchical model allows tasks to share information between each other through a set of global hierarchical prior parameters, and can be seen as a generalization of the two conventional approaches for multi-task problems. We show that the Hierarchical LoRA model can improve the test perplexity for all tasks compared to both training the models independently and training one model for all tasks, and that it can mitigate the trade-off between the two approaches.
+Future work includes investigating the effect that HLORA has on more tasks and datasets, investigating how the relative capacity of the global model affects the performance, and investigating the full posterior distribution of the model.
 
 \printbibliography
 
