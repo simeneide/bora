@@ -1,6 +1,6 @@
 %\documentclass{article}
 \documentclass[fullpaper]{nldl}
-\paperID{42}
+\paperID{1}
 \vol{V}
 \usepackage{graphicx} % Required for inserting images
 \usepackage{authblk}
@@ -10,9 +10,9 @@
 \author[2]{Arnoldo Frigessi}
 \affil[1]{University of Oslo, Schibsted}
 \affil[1]{University of Oslo}
-\date{March 2024}
+\date{July 2024}
 
-%\usepackage{biblatex} % [backend=biber,style=alphabetic,sorting=ynt] %not necessary when using template
+\usepackage{biblatex}[backend=biber,style=alphabetic,sorting=ynt] %not necessary when using template
 \addbibresource{references.bib}
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -49,13 +49,13 @@ A media organization might want to use an LLM to generate various textual elemen
 A website might have multiple chatbot tasks answering user inquiries across various topics.
 And finally, a scriptwriting AI might want to generate dialogues for different characters in a movie, each with their unique style and vocabulary.
 
-In these multi-task cases, the practitioner can either (1) train one model for each task and dataset separately, or (2) train one model for all tasks and condition the specific output wanted (e.g \cite{Raffel2019}).
+In these multi-task cases, the practitioner can either (1) train one model for each task and dataset separately, or (2) train one model for all tasks and condition the specific output wanted (e.g~\cite{Raffel2019}).
 There is a trade-off between these two approaches: Train each task separately and the model will be able to specialize on each task, but it may suffer when limited data are available for some task. Train one model for all tasks, and the model will be able to share information between tasks, but it may not be able to specialize on each task due to limited model capacity.
 
 In this paper we suggest a way to circumvent these trade-offs and presents a generalization of the two LoRA fine-tuning methods for multi-task problems, which we call Bayesian Hierarchical Low-Rank Adaption method (BoRA).
 The BoRA method allows tasks to share information between each other through sharing a set of global hierarchical prior parameters, in a Bayesian hierarchical setting. 
 This means that tasks with little data can benefit from the global structure across related tasks, while tasks with more data can specialize on their specific task.
-We show in Section \ref{sec:BoRA} that BoRA can be seen as a generalization of the two approaches above.
+We show in Section~\ref{sec:BoRA} that BoRA can be seen as a generalization of the two approaches above.
 
 To test our method, we evaluate the BoRA on the next token generation problem of parliament speeches letting each parliament representative be a task. In our setting, BoRA is superior to both conventional approaches described above and suggests a way to mitigate the trade-off between the two.
 % Write something about how easy it is to implement and how it can be used in practice?
