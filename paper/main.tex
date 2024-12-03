@@ -1,5 +1,5 @@
 %\documentclass{article}
-\documentclass[fullpaper]{nldl}
+\documentclass[fullpaper,final]{nldl}
 \paperID{1}
 \vol{V}
 \usepackage{graphicx} % Required for inserting images
@@ -11,9 +11,10 @@
 \affil[1]{University of Oslo, Schibsted}
 \affil[2]{University of Oslo}
 \date{July 2024}
+\vol{265}
 
 \usepackage{biblatex}[backend=biber,style=alphabetic,sorting=ynt] % Not necessary when using template
-\addbibresource{references.bib}
+\addbibresource{My Library.bib}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \newcommand{\R}{\mathbb{R}}
@@ -70,6 +71,7 @@ To test our method, we evaluate BoRA on the next token generation problem of par
 In our setting, BoRA is superior to both conventional approaches described above and suggests a way to mitigate the trade-off between the two.
 The paper is organized as follows: Section \ref{sec:related_works} presents related works. 
 Section \ref{sec:method} presents BoRA, the Hierarchical LoRA method; Section \ref{sec:experimental_setup} describes the experimental setup, Section \ref{sec:results} presents the results, and Section \ref{sec:discussion} discusses the results and the implications of the new method.
+Finally, we make the code openly available at \url{https://github.com/simeneide/bora}.
 
 % If the D tasks are more similar to each other than the pretraining corpus, the optimal parameters $\hat{\theta}_d$ should share some information during training in order to maximize their likelihood.
 
@@ -83,6 +85,12 @@ Autoregressive LLMs and Bayesian modeling are described in Section \ref{sec:meth
 Multi-task Learning \cite{caruanaMultitaskLearning1997} is a popular machine learning approach for training one model on multiple tasks. 
 A common approach is to share the lower layers of a neural network between tasks and have separate parameters for the last (or last few) layers for each task. 
 Our paper suggests a different approach, where we share information between tasks through a hierarchical prior over the task-specific parameters.
+
+Modern training of language models can itself be considered a form of multi-task learning where the model is trained on a diverse set of tasks and datasets \cite{raffelExploringLimitsTransfer2023,brownLanguageModelsAre2020}.
+However, with the trend of even bigger models, pretraining of LLMs is only available to a few large organizations due to both computational and data requirements. Therefore, there is a need for methods that can leverage the pretraining of these models for smaller tasks and datasets such as the one we present in this paper.
+
+Model merging of LLMs \cite{yadavTIESMergingResolvingInterference2023,yuLanguageModelsAre2024,liDeepModelFusion2023} is another popular approach, often showing promising performance. It takes multiple task-specific models and merges them into one model. The standard way is by doing a weighted average of the model parameters (\cite{liDeepModelFusion2023}), but more sophisticated methods exist (\cite{yadavTIESMergingResolvingInterference2023, yuLanguageModelsAre2024}). Model merging differs from our approach in that it merges the models after training, while the BoRA method shares information between tasks during training through a Bayesian hierarchical model."
+
 \subsection{Fine-tuning Methods}
 A popular approach to fine-tuning neural networks involves adjusting only the top layer (or the n top layers) of a pre-trained neural network (e.g., \cite{yosinskiHowTransferableAre2014}). 
 These techniques exploit the fact that features learned in the lower layers of the network are general and transferable, while the top layers are more task-specific. 
@@ -155,7 +163,7 @@ Tasks share some common knowledge, modeled by introducing a Gaussian hierarchica
     P(\theta_{1:D} | \Theta, \tau) = \prod_{d=1}^D N(\theta_d ; \Theta, \frac{1}{\tau} I)
 \end{equation}
 where $\Theta$ is a set of hierarchical mean parameters, $I$ is a unit diagonal matrix, and $\tau \geq 0$ is a scalar precision hyperparameter controlling how similar the task parameters $\theta_d$ should be to the hierarchical mean parameters $\Theta$.
-We let $\Theta$ have a uniform hyperprior (i.e. $P(\Theta) = 1$). The prior assumes that the task parameters share a common origin because the tasks are related: input data come from similar distributions and the output tasks share similarities. The precision hyperparameter $\tau$ dictates how much the task parameters $\theta_d$ are a priori expected to deviate from the hierarchical mean parameters $\Theta$. It indicates how much structure and information is shared among tasks and should be set by the practitioner based on prior knowledge.
+We let $\Theta$ have an improper uniform hyperprior (i.e. $P(\Theta) = 1$ for all values of $\Theta$). The prior assumes that the task parameters share a common origin because the tasks are related: input data come from similar distributions and the output tasks share similarities. The precision hyperparameter $\tau$ dictates how much the task parameters $\theta_d$ are a priori expected to deviate from the hierarchical mean parameters $\Theta$. It indicates how much structure and information is shared among tasks and should be set by the practitioner based on prior knowledge.
 The posterior distribution of the hierarchical model, obtained by combining equations \ref{eq:lik} and \ref{eq:prior}, is:
 
 \begin{equation} \label{eq:posterior}
